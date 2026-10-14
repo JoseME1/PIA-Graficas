@@ -36,10 +36,10 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 	float4 textureColor2 = ObjTexture2.Sample( ObjSamplerState, input.TexCoord );
 	float4 textureColor3 = ObjTexture3.Sample( ObjSamplerState, input.TexCoord );
 
-	float length = input.vectPos.y/input.maxHeight;
-	textureColor *= length;
-	textureColor2 *= (1-length);
-	textureColor3 *= (0.33+(length/3));
+	float l = saturate((input.vectPos.y - 1.0) / 3.0);
+	textureColor *= l * 0.5;
+	textureColor2 *= (1.0 - l) * 0.5;
+	textureColor3 *= 0.5;
 
 	textureColor += textureColor2 + textureColor3;
 
