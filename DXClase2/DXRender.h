@@ -26,26 +26,19 @@ private:
 	D3DXMATRIX Projection;
 
 
-	MPrimitives *cubo;
-	MPrimitives *esfera;
-	MPrimitives *toroide;
-	MPrimitives *cono;
-	MPrimitives *cilindro;
-	MPrimitives *billboard;
 	MPrimitives *skydomo;
 	MPrimitives *terreno;
 	MPrimitives *Bitmap;
-	MPrimitives *BoundingSphere1;
-	MPrimitives *BoundingSphere2;
+
+	//MIS PUTOS MODELOS
+	MPrimitives *arbol;
+	MPrimitives* barril;
 
 	Camara *camara;
 	Camara *skyCamara;
 
 	float rotPerFrame;
 	float sphereSpeed;
-	D3DXVECTOR2 BoundingSphereTranslation;
-	D3DXVECTOR2 DummyBoundyEvents;
-	D3DXVECTOR2 LastBoundingPosition;
 
 public:
 	DXRender()
@@ -134,19 +127,14 @@ public:
 		//Set our Render Target
 		d3d11DevCon->OMSetRenderTargets( 1, &renderTargetView, depthStencilView );
 
-		cubo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, L"Texturas/escudo.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		esfera = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1.0f, L"Texturas/escudo.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		toroide = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1.0f, 0.5f, L"Texturas/escudo.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		cilindro = new MPrimitives(d3d11Device, d3d11DevCon, 16, 1.0f, 1.0f, 2.0f, L"Texturas/escudo.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		cono = new MPrimitives(d3d11Device, d3d11DevCon, 16, 0.0f, 1.0f, 2.0f, L"Texturas/escudo.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		billboard = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"Texturas/ave.png");
-		
+		//Mis Modelos
+		arbol = new MPrimitives(d3d11Device, d3d11DevCon, "Models/tree.txt", L"Texturas/tronco.jpg", L"Texturas/tronco.jpg", ShaderDiffuse);
+		barril = new MPrimitives(d3d11Device, d3d11DevCon, "Models/barril.txt", L"Texturas/barrelcrateColor.png", L"Texturas/barrelcrateNormal.png", ShaderNormalmap);
+
+
+		//terreno
 		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/arena.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
-
-		BoundingSphere1 = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1.0f, L"Texturas/escudo.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		BoundingSphere2 = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1.0f, L"Texturas/escudo.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		BoundingSphereTranslation = D3DXVECTOR2(0, 0);
 		
 		return true;
 	}
@@ -215,22 +203,6 @@ public:
 		{
 			moveBackForward -= speed;
 		}
-		if (keyboardState[DIK_LEFT])
-		{
-			DummyBoundyEvents.x = -.01f;
-		}
-		if (keyboardState[DIK_RIGHT])
-		{
-			DummyBoundyEvents.x = .01f;
-		}
-		if (keyboardState[DIK_UP])
-		{
-			DummyBoundyEvents.y = .01f;
-		}
-		if (keyboardState[DIK_DOWN])
-		{
-			DummyBoundyEvents.y = -.01f;
-		}
 
 		if((mouseCurrState.lX != mouseLastState.lX) || (mouseCurrState.lY != mouseLastState.lY))
 		{
@@ -291,35 +263,22 @@ public:
 
 	void UpdateScene()
 	{
-		
-		LastBoundingPosition = BoundingSphereTranslation;
-		BoundingSphereTranslation += DummyBoundyEvents;
-
-	
 		rotPerFrame += 0.1f;
 
-		D3DXMATRIX rotMatY, northMat, westMat, eastMat, southMat, scale, rotMatX,MatAcomodo;
+		//Mis Modelos
+		D3DXMATRIX escalaArbol, lugarArbol;
+		D3DXMatrixScaling(&escalaArbol, 2.0f, 2.0f, 2.0f);
+		D3DXMatrixTranslation(&lugarArbol, 45.0f, 0.0f, 45.0f);
 
-		D3DXMATRIX Bounding1, Bounding2, BoundinMatTranslation;
+		D3DXMATRIX escalaBarril, lugarBarril;
+		D3DXMatrixScaling(&escalaBarril, 2.0f, 2.0f, 2.0f);
+		D3DXVECTOR2 xzBarril(25.0f, 25.0f);
+		float yBarril = terreno->getTerrainCollision(xzBarril) - 0.023f * 2.0f + 0.05f;
+		D3DXMatrixTranslation(&lugarBarril, xzBarril.x, yBarril, xzBarril.y);
 
-		D3DXMatrixRotationY(&rotMatY, D3DXToRadian(rotPerFrame));
-		D3DXMatrixTranslation(&MatAcomodo, 50, 3, 50);
-		D3DXMatrixTranslation(&northMat, 0, 3, 0);
-		D3DXMatrixTranslation(&southMat, 0, -3, 0);
-		D3DXMatrixTranslation(&eastMat, 3, 0, 0);
-		D3DXMatrixTranslation(&westMat, -3, 0, 0);
-		D3DXMatrixTranslation(&Bounding1, 3, 6, 0);
-		D3DXMatrixTranslation(&Bounding2, -3, 6, 0);
-		D3DXMatrixTranslation(&BoundinMatTranslation, BoundingSphereTranslation.x, BoundingSphereTranslation.y, 0);
-		D3DXMatrixScaling(&scale, 0.03f, 0.03f, 0.03f);
-
-		cubo->UpdateScene(rotMatY * MatAcomodo);
-		esfera->UpdateScene(rotMatY * northMat * MatAcomodo);
-		toroide->UpdateScene(rotMatY * eastMat* MatAcomodo);
-		cilindro->UpdateScene(rotMatY * eastMat * northMat* MatAcomodo);
-		cono->UpdateScene(rotMatY * westMat* MatAcomodo);
-		
-		billboard->UpdateScene(westMat * northMat* MatAcomodo);
+		//Mis Modelos
+		arbol->UpdateScene(escalaArbol * lugarArbol);
+		barril->UpdateScene(escalaBarril * lugarBarril);
 		
 
 		D3DXMATRIX skyRotMat, terrMat;
@@ -330,24 +289,10 @@ public:
 		//D3DXMatrixTranslation(&terrMat, -50, 0, -50);
 		D3DXMatrixIdentity(&terrMat);
 		terreno->UpdateScene(terrMat);
+		
+		
 
 		camara->Position.y = terreno->getTerrainCollision(camara->getXZ()) +3;
-
-		BoundingSphere1->UpdateScene(Bounding1 * MatAcomodo * BoundinMatTranslation);
-		BoundingSphere2->UpdateScene(Bounding2 * MatAcomodo);
-
-
-		if (CheckBoundingSphereCollision(BoundingSphere1->PrimitiveBoundings->Radius,
-			BoundingSphere1->PrimitiveBoundings->PositionM, BoundingSphere1->getWorldMatrix(),
-			BoundingSphere2->PrimitiveBoundings->Radius,
-			BoundingSphere2->PrimitiveBoundings->PositionM, BoundingSphere2->getWorldMatrix())){
-
-			BoundingSphereTranslation = LastBoundingPosition;
-		}
-
-
-		DummyBoundyEvents.x = 0;
-		DummyBoundyEvents.y = 0;
 	}
 
 	void DrawScene()
@@ -358,21 +303,12 @@ public:
 		//Refresh the Depth/Stencil view
 		d3d11DevCon->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH|D3D11_CLEAR_STENCIL, 1.0f, 0);
 		
-		cubo->DrawScene(camara);
-		esfera->DrawScene(camara);
-		toroide->DrawScene(camara);
-		cilindro->DrawScene(camara);
-		
-		cono->DrawScene(camara);
-		billboard->DrawScene(camara);
-
-		
+		//Mis modelos
+		barril->DrawScene(camara);
+		arbol->DrawScene(camara);
 
 		terreno->DrawScene(camara);
 		skydomo->DrawScene(skyCamara);
-
-		BoundingSphere1->DrawScene(camara);
-		BoundingSphere2->DrawScene(camara);
 
 		Bitmap->DrawBitmap(camara);
 
@@ -381,39 +317,6 @@ public:
 		SwapChain->Present(0, 0);
 	}
 
-	
-	bool CheckBoundingSphereCollision(float firstSphereRadius,
-		D3DXVECTOR3 firstSpherePos,
-		D3DXMATRIX firstObjWorldSpace,
-		float secondSphereRadius,
-		D3DXVECTOR3 secondSpherePos,
-		D3DXMATRIX secondObjWorldSpace)
-	{
-		//Declare local variables
-		D3DXVECTOR3 world_1 = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
-		D3DXVECTOR3 world_2 = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
-		float objectsDistance = 0.0f;
-
-		//Transform the objects world space to objects REAL center in world space
-		D3DXVec3TransformCoord(&world_1, &firstSpherePos, &firstObjWorldSpace);
-		D3DXVec3TransformCoord(&world_2, &secondSpherePos, &secondObjWorldSpace);
-
-		// Create Vector to verify distance
-		world_1 -= world_2;
-
-		//Get the distance between the two objects
-		objectsDistance = D3DXVec3Length(&world_1);
-		//objectsDistance = XMVectorGetX(XMVector3Length(world_1 - world_2));
-
-		//If the distance between the two objects is less than the sum of their bounding spheres...
-		if (objectsDistance <= (firstSphereRadius + secondSphereRadius))
-			return true;
-
-		//If the bounding spheres are not colliding, return false
-		return false;
-	}
-	
-	
 };
 
 #endif
