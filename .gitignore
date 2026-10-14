@@ -5,6 +5,7 @@ x64/
 [Bb]in/
 [Oo]bj/
 *.exe
+!Convertir modelos/Convertidor.exe
 *.ilk
 *.pdb
 *.lib
