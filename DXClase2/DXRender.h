@@ -33,6 +33,15 @@ private:
 	//MIS PUTOS MODELOS
 	MPrimitives *arbol;
 	MPrimitives* barril;
+	MPrimitives* gato;
+	MPrimitives* tumba;
+	MPrimitives* tree2;
+	MPrimitives* ataud;
+	MPrimitives* calaca;
+	MPrimitives* calaca2;
+	MPrimitives* castillo;
+	MPrimitives* arbolmuerto1;
+	MPrimitives* arbolmuerto2;
 
 	Camara *camara;
 	Camara *skyCamara;
@@ -130,6 +139,15 @@ public:
 		//Mis Modelos
 		arbol = new MPrimitives(d3d11Device, d3d11DevCon, "Models/tree.txt", L"Texturas/tronco.jpg", L"Texturas/tronco.jpg", ShaderDiffuse);
 		barril = new MPrimitives(d3d11Device, d3d11DevCon, "Models/barril.txt", L"Texturas/barrelcrateColor.png", L"Texturas/barrelcrateNormal.png", ShaderNormalmap);
+		gato = new MPrimitives(d3d11Device, d3d11DevCon, "Models/gato.txt", L"Texturas/gatoColor.png", L"", ShaderDiffuse);
+		tumba = new MPrimitives(d3d11Device, d3d11DevCon, "Models/tumba.txt", L"Texturas/tumbaColor.png", L"", ShaderDiffuse);
+		tree2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/tree2.txt", L"Texturas/tree2Color.png", L"", ShaderDiffuse);
+		ataud = new MPrimitives(d3d11Device, d3d11DevCon, "Models/ataud.txt", L"Texturas/ataudColor.png", L"", ShaderDiffuse);
+		calaca = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca.txt", L"Texturas/calacaColor.png", L"", ShaderDiffuse);
+		calaca2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca2.txt", L"Texturas/calaca2Color.png", L"", ShaderDiffuse);
+		castillo = new MPrimitives(d3d11Device, d3d11DevCon, "Models/castillo.txt", L"Texturas/castilloColor.png", L"", ShaderDiffuse);
+		arbolmuerto1 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/arbolmuerto1.txt", L"Texturas/arbolmuerto1Color.jpg", L"", ShaderDiffuse);
+		arbolmuerto2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/arbolmuerto2.txt", L"Texturas/arbolmuerto2Color.jpg", L"", ShaderDiffuse);
 
 
 		//terreno
@@ -177,7 +195,7 @@ public:
 
 		DIKeyboard->GetDeviceState(sizeof(keyboardState),(LPVOID)&keyboardState);
 
-		float speed = 0.005f;
+		float speed = 0.01f;
 
 		float moveLeftRight = 0;
 		float moveBackForward = 0;
@@ -276,9 +294,72 @@ public:
 		float yBarril = terreno->getTerrainCollision(xzBarril) - 0.023f * 2.0f + 0.05f;
 		D3DXMatrixTranslation(&lugarBarril, xzBarril.x, yBarril, xzBarril.y);
 
+		D3DXMATRIX escalaGato, lugarGato;
+		D3DXMatrixScaling(&escalaGato, 2.0f, 2.0f, 2.0f);
+		D3DXVECTOR2 xzGato(35.0f, 35.0f);
+		float yGato = terreno->getTerrainCollision(xzGato) + 0.05f;
+		D3DXMatrixTranslation(&lugarGato, xzGato.x, yGato, xzGato.y);
+
+		D3DXMATRIX escalaTumba, lugarTumba;
+		D3DXMatrixScaling(&escalaTumba, 2.5f, 2.5f, 2.5f);
+		D3DXVECTOR2 xzTumba(30.0f, 35.0f);
+		float yTumba = terreno->getTerrainCollision(xzTumba) + 0.05f;
+		D3DXMatrixTranslation(&lugarTumba, xzTumba.x, yTumba, xzTumba.y);
+
+		D3DXMATRIX escalaTree2, lugarTree2;
+		D3DXMatrixScaling(&escalaTree2, 1.5f, 1.5f, 1.5f);
+		D3DXVECTOR2 xzTree2(40.0f, 30.0f);
+		float yTree2 = terreno->getTerrainCollision(xzTree2) + 0.05f;
+		D3DXMatrixTranslation(&lugarTree2, xzTree2.x, yTree2, xzTree2.y);
+
+		D3DXMATRIX escalaAtaud, lugarAtaud;
+		D3DXMatrixScaling(&escalaAtaud, 1.5f, 1.5f, 1.5f);
+		D3DXVECTOR2 xzAtaud(35.0f, 40.0f);
+		float yAtaud = terreno->getTerrainCollision(xzAtaud) + 0.05f;
+		D3DXMatrixTranslation(&lugarAtaud, xzAtaud.x, yAtaud, xzAtaud.y);
+
+		D3DXMATRIX escalaCalaca, lugarCalaca;
+		D3DXMatrixScaling(&escalaCalaca, 2.0f, 2.0f, 2.0f);
+		D3DXVECTOR2 xzCalaca(45.0f, 35.0f);
+		float yCalaca = terreno->getTerrainCollision(xzCalaca) + 0.05f;
+		D3DXMatrixTranslation(&lugarCalaca, xzCalaca.x, yCalaca, xzCalaca.y);
+
+		D3DXMATRIX escalaCalaca2, lugarCalaca2;
+		D3DXMatrixScaling(&escalaCalaca2, 2.0f, 2.0f, 2.0f);
+		D3DXVECTOR2 xzCalaca2(50.0f, 40.0f);
+		float yCalaca2 = terreno->getTerrainCollision(xzCalaca2) + 0.05f;
+		D3DXMatrixTranslation(&lugarCalaca2, xzCalaca2.x, yCalaca2, xzCalaca2.y);
+
+		D3DXMATRIX escalaCastillo, lugarCastillo;
+		D3DXMatrixScaling(&escalaCastillo, 2.0f, 2.0f, 2.0f);
+		D3DXVECTOR2 xzCastillo(80.0f, 130.0f);
+		float yCastillo = terreno->getTerrainCollision(xzCastillo) + 0.05f;
+		D3DXMatrixTranslation(&lugarCastillo, xzCastillo.x, yCastillo, xzCastillo.y);
+
+		D3DXMATRIX escalaAm1, lugarAm1;
+		D3DXMatrixScaling(&escalaAm1, 0.6f, 0.6f, 0.6f);
+		D3DXVECTOR2 xzAm1(20.0f, 20.0f);
+		float yAm1 = terreno->getTerrainCollision(xzAm1) + 0.889f * 0.6f + 0.05f;
+		D3DXMatrixTranslation(&lugarAm1, xzAm1.x, yAm1, xzAm1.y);
+
+		D3DXMATRIX escalaAm2, lugarAm2;
+		D3DXMatrixScaling(&escalaAm2, 0.6f, 0.6f, 0.6f);
+		D3DXVECTOR2 xzAm2(15.0f, 30.0f);
+		float yAm2 = terreno->getTerrainCollision(xzAm2) + 0.889f * 0.6f + 0.05f;
+		D3DXMatrixTranslation(&lugarAm2, xzAm2.x, yAm2, xzAm2.y);
+
 		//Mis Modelos
 		arbol->UpdateScene(escalaArbol * lugarArbol);
 		barril->UpdateScene(escalaBarril * lugarBarril);
+		gato->UpdateScene(escalaGato * lugarGato);
+		tumba->UpdateScene(escalaTumba * lugarTumba);
+		tree2->UpdateScene(escalaTree2 * lugarTree2);
+		ataud->UpdateScene(escalaAtaud * lugarAtaud);
+		calaca->UpdateScene(escalaCalaca * lugarCalaca);
+		calaca2->UpdateScene(escalaCalaca2 * lugarCalaca2);
+		castillo->UpdateScene(escalaCastillo * lugarCastillo);
+		arbolmuerto1->UpdateScene(escalaAm1 * lugarAm1);
+		arbolmuerto2->UpdateScene(escalaAm2 * lugarAm2);
 		
 
 		D3DXMATRIX skyRotMat, terrMat;
@@ -306,6 +387,15 @@ public:
 		//Mis modelos
 		barril->DrawScene(camara);
 		arbol->DrawScene(camara);
+		gato->DrawScene(camara);
+		tumba->DrawScene(camara);
+		tree2->DrawScene(camara);
+		ataud->DrawScene(camara);
+		calaca->DrawScene(camara);
+		calaca2->DrawScene(camara);
+		castillo->DrawScene(camara);
+		arbolmuerto1->DrawScene(camara);
+		arbolmuerto2->DrawScene(camara);
 
 		terreno->DrawScene(camara);
 		skydomo->DrawScene(skyCamara);
