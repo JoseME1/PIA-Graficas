@@ -7,6 +7,9 @@
 #include "Light.h"
 #include "MeshPrimitives.h"
 
+#include <Xinput.h>
+#pragma comment(lib, "Xinput.lib")
+
 class DXRender
 {
 private:
@@ -230,6 +233,36 @@ public:
 			camPitch = mouseCurrState.lY * smoothness;
 
 			mouseLastState = mouseCurrState;
+		}
+
+		//Control de Xbox (XInput)
+		XINPUT_STATE padState;
+		ZeroMemory(&padState, sizeof(XINPUT_STATE));
+		if (XInputGetState(0, &padState) == ERROR_SUCCESS)
+		{
+			XINPUT_GAMEPAD pad = padState.Gamepad;
+
+			//Stick izquierdo -> movimiento (deadzone 7849, normalizado a -1..1)
+			float normLX = 0.0f;
+			float normLY = 0.0f;
+			if (pad.sThumbLX > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || pad.sThumbLX < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
+				normLX = (float)pad.sThumbLX / 32767.0f;
+			if (pad.sThumbLY > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || pad.sThumbLY < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
+				normLY = (float)pad.sThumbLY / 32767.0f;
+
+			float padSpeed = (pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) ? speed * 3.0f : speed;
+			moveLeftRight += normLX * padSpeed;
+			moveBackForward += normLY * padSpeed;
+
+			//Stick derecho -> mirar (directo, igual que el mouse; deadzone 8689)
+			if (pad.sThumbRX > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || pad.sThumbRX < -XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
+				camYaw += (float)pad.sThumbRX / 32767.0f * 0.008f;
+			if (pad.sThumbRY > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || pad.sThumbRY < -XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
+				camPitch -= (float)pad.sThumbRY / 32767.0f * 0.008f;
+
+			//Boton Start -> salir (equivale a ESC)
+			if (pad.wButtons & XINPUT_GAMEPAD_START)
+				PostQuitMessage(0);
 		}
 
 		camara->UpdateCamera(moveBackForward, moveLeftRight, camYaw, camPitch); 
