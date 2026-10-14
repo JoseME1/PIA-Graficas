@@ -1,0 +1,67 @@
+struct Light
+{
+	float3 dir;
+	float specularPower;
+	float4 ambient;
+	float4 diffuse;
+};
+
+cbuffer ConstantBufferPS
+{
+	Light light;
+};
+
+Texture2D ObjTexture;
+Texture2D ObjNormMap;
+SamplerState ObjSamplerState;
+
+struct VS_OUTPUT
+{
+	float4 Pos : SV_POSITION;
+	float2 TexCoord : TEXCOORD;
+	float3 normal : NORMAL;
+	float3 viewDirection : TEXCOORD1;
+	float3 tangent : TANGENT;
+	float3 binormal : BINORMAL;
+};
+
+float4 PS(VS_OUTPUT input ) : SV_Target
+{
+	input.normal = normalize(input.normal);
+	input.tangent = normalize(input.tangent);// - dot(input.tangent, input.normal)*input.normal);
+	input.binormal = normalize(input.binormal);
+
+	float4 textureColor = ObjTexture.Sample( ObjSamplerState, input.TexCoord );
+	float4 normalMap = ObjNormMap.Sample( ObjSamplerState, input.TexCoord ); //normal map texture
+
+	//Change normal map range from [0, 1] to [-1, 1]
+	normalMap = (2.0f*normalMap) - 1.0f;
+
+	// Calculate the normal from the data in the bump map.
+    float3 bumpNormal = (normalMap.x * input.tangent) + (normalMap.y * input.binormal) + (normalMap.z * input.normal);
+
+	bumpNormal = normalize(bumpNormal);
+
+	float3 finalColor;
+
+	finalColor = textureColor * light.ambient;
+	finalColor += saturate(saturate(dot(light.dir, bumpNormal)) * light.diffuse) * textureColor;
+	
+	return float4(finalColor, textureColor.a);
+	
+	/*float4 finalColor;
+	float lightIntensity;
+
+	finalColor = light.ambient;
+	lightIntensity = saturate(dot(input.normal, light.dir));
+
+	if(lightIntensity > 0.0f)
+	{
+		finalColor += (light.diffuse * lightIntensity);
+	}
+
+	finalColor = saturate(finalColor);
+	finalColor = finalColor * textureColor;
+	
+	return finalColor;*/
+}

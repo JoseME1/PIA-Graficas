@@ -1,0 +1,45 @@
+struct Light
+{
+	float3 dir;
+	float specularPower;
+	float4 ambient;
+	float4 diffuse;
+};
+
+cbuffer ConstantBufferPS
+{
+	Light light;
+};
+
+Texture2D ObjTexture;
+SamplerState ObjSamplerState;
+
+struct VS_OUTPUT
+{
+	float4 Pos : SV_POSITION;
+	float2 TexCoord : TEXCOORD;
+	float3 normal : NORMAL;
+	float3 viewDirection : TEXCOORD1;
+};
+
+float4 PS(VS_OUTPUT input ) : SV_Target
+{
+	input.normal = normalize(input.normal);
+	float4 textureColor = ObjTexture.Sample( ObjSamplerState, input.TexCoord );
+	
+	float4 finalColor;
+	float lightIntensity;
+
+	finalColor = light.ambient;
+	lightIntensity = saturate(dot(input.normal, light.dir));
+
+	if(lightIntensity > 0.0f)
+	{
+		finalColor += (light.diffuse * lightIntensity);
+	}
+
+	finalColor = saturate(finalColor);
+	finalColor = finalColor * textureColor;
+	
+	return finalColor;
+}

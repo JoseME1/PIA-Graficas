@@ -1,0 +1,36 @@
+# Build output
+Debug/
+Release/
+x64/
+[Bb]in/
+[Oo]bj/
+*.exe
+*.ilk
+*.pdb
+*.lib
+*.exp
+*.idb
+
+# MSBuild / VS generated
+*.tlog
+*.lastbuildstate
+*.log
+*.unsuccessfulbuild
+*.metagen
+*.opendb
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+.vs/
+ipch/
+
+# VS user-specific (do not commit)
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Converter default output (keep Models/*.txt assets)
+modelo.txt
+shader-error.txt
