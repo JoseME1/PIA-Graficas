@@ -33,7 +33,7 @@ private:
 	MPrimitives *terreno;
 	//MPrimitives *Bitmap;
 
-	//MIS PUTOS MODELOS
+	//MIS MODELOS
 	MPrimitives *arbol;
 	MPrimitives* barril;
 	MPrimitives* gato;
@@ -279,7 +279,7 @@ public:
 			if (pad.sThumbLY > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || pad.sThumbLY < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
 				normLY = (float)pad.sThumbLY / 32767.0f;
 
-			float padSpeed = (pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) ? speed * 3.0f : speed;
+			float padSpeed = (pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) ? speed * 1.5f : speed;
 			moveLeftRight += normLX * padSpeed;
 			moveBackForward += normLY * padSpeed;
 
@@ -289,7 +289,7 @@ public:
 			if (pad.sThumbRY > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || pad.sThumbRY < -XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
 				camPitch -= (float)pad.sThumbRY / 32767.0f * 0.008f;
 
-			
+
 			if (pad.wButtons & XINPUT_GAMEPAD_START)
 				PostQuitMessage(0);
 		}
