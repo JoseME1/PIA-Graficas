@@ -980,6 +980,9 @@ public:
 			}
 		}
 
+		// Guardamos la grilla limpia del heightmap para poder interpolar la altura.
+		heightMapDummy = heightMap;
+
 		createTerrain(heightMap);
 	}
 
@@ -992,7 +995,6 @@ public:
 
 		//Creacion de vertices
 		SimpleVertex *vertex = new SimpleVertex[numVertex];
-		heightMapDummy = new SimpleVertex[numVertex];
 		unsigned long* indices = new unsigned long[numVertex];
 		for (j = 0; j<(tHeight - 1); j++)
 		{
@@ -1056,8 +1058,6 @@ public:
 				index++;
 			}
 		}
-
-		heightMapDummy = vertex;
 
 		D3D11_BUFFER_DESC vertexBufferDesc;
 		ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
@@ -1349,11 +1349,28 @@ public:
 
 		if (heightMapDummy != NULL){
 
-			for (int x = 0; x < numVertex; x++){
+			int x0 = (int)XZ.x;
+			int z0 = (int)XZ.y;
 
-				if ((int)heightMapDummy[x].pos.x == (int)XZ.x && (int)heightMapDummy[x].pos.z == (int)XZ.y)
-					return heightMapDummy[x].pos.y;
-			}
+			if (x0 < 0) x0 = 0;
+			if (z0 < 0) z0 = 0;
+			if (x0 > tWidth - 2) x0 = tWidth - 2;
+			if (z0 > tHeight - 2) z0 = tHeight - 2;
+
+			float fx = XZ.x - (float)x0;
+			float fz = XZ.y - (float)z0;
+			if (fx < 0.0f) fx = 0.0f;
+			if (fz < 0.0f) fz = 0.0f;
+
+			float h00 = heightMapDummy[tHeight * z0 + x0].pos.y;
+			float h10 = heightMapDummy[tHeight * z0 + (x0 + 1)].pos.y;
+			float h01 = heightMapDummy[tHeight * (z0 + 1) + x0].pos.y;
+			float h11 = heightMapDummy[tHeight * (z0 + 1) + (x0 + 1)].pos.y;
+
+			float h0 = h00 + (h10 - h00) * fx;
+			float h1 = h01 + (h11 - h01) * fx;
+
+			return h0 + (h1 - h0) * fz;
 		}
 		return 0;
 	}

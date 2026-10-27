@@ -31,7 +31,7 @@ private:
 
 	MPrimitives *skydomo;
 	MPrimitives *terreno;
-	MPrimitives *Bitmap;
+	//MPrimitives *Bitmap;
 
 	//MIS PUTOS MODELOS
 	MPrimitives *arbol;
@@ -301,13 +301,13 @@ public:
 		d3d11DevCon->RSSetViewports(1, &viewport);
 
 		//Create the camera
-		D3DXVECTOR3 Position = D3DXVECTOR3(50, 2.0f, 40.0f);
+		D3DXVECTOR3 Position = D3DXVECTOR3(20.0f, 0.0f, 20.0f);
 		D3DXVECTOR3 Target = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
 		D3DXVECTOR3 Up = D3DXVECTOR3(0.0f, 1.0f, 0.0f);
 		camara = new Camara(Position,Target,Up, Width, Height);
 		skyCamara = new Camara(Position,Target,Up, Width, Height);
 		//esta es la gui
-		Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
+		//Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
 
 		return true;
 	}
@@ -319,65 +319,67 @@ public:
 		//Mis Modelos
 		D3DXMATRIX escalaArbol, lugarArbol;
 		D3DXMatrixScaling(&escalaArbol, 2.0f, 2.0f, 2.0f);
-		D3DXMatrixTranslation(&lugarArbol, 45.0f, 0.0f, 45.0f);
+		D3DXVECTOR2 xzArbol(110.0f, 130.0f);
+		float yArbol = terreno->getTerrainCollision(xzArbol) + 0.05f;
+		D3DXMatrixTranslation(&lugarArbol, xzArbol.x, yArbol, xzArbol.y);
 
 		D3DXMATRIX escalaBarril, lugarBarril;
-		D3DXMatrixScaling(&escalaBarril, 2.0f, 2.0f, 2.0f);
-		D3DXVECTOR2 xzBarril(25.0f, 25.0f);
-		float yBarril = terreno->getTerrainCollision(xzBarril) - 0.023f * 2.0f + 0.05f;
+		D3DXMatrixScaling(&escalaBarril, 1.0f, 1.0f, 1.0f);
+		D3DXVECTOR2 xzBarril(160.0f, 155.0f);
+		float yBarril = terreno->getTerrainCollision(xzBarril) - 0.023f * 1.0f + 0.05f;
 		D3DXMatrixTranslation(&lugarBarril, xzBarril.x, yBarril, xzBarril.y);
 
 		D3DXMATRIX escalaGato, lugarGato;
 		D3DXMatrixScaling(&escalaGato, 2.0f, 2.0f, 2.0f);
-		D3DXVECTOR2 xzGato(35.0f, 35.0f);
+		D3DXVECTOR2 xzGato(150.0f, 140.0f);
 		float yGato = terreno->getTerrainCollision(xzGato) + 0.05f;
 		D3DXMatrixTranslation(&lugarGato, xzGato.x, yGato, xzGato.y);
 
 		D3DXMATRIX escalaTumba, lugarTumba;
 		D3DXMatrixScaling(&escalaTumba, 2.5f, 2.5f, 2.5f);
-		D3DXVECTOR2 xzTumba(30.0f, 35.0f);
+		D3DXVECTOR2 xzTumba(145.0f, 150.0f);
 		float yTumba = terreno->getTerrainCollision(xzTumba) + 0.05f;
 		D3DXMatrixTranslation(&lugarTumba, xzTumba.x, yTumba, xzTumba.y);
 
 		D3DXMATRIX escalaTree2, lugarTree2;
 		D3DXMatrixScaling(&escalaTree2, 1.5f, 1.5f, 1.5f);
-		D3DXVECTOR2 xzTree2(40.0f, 30.0f);
+		D3DXVECTOR2 xzTree2(190.0f, 130.0f);
 		float yTree2 = terreno->getTerrainCollision(xzTree2) + 0.05f;
 		D3DXMatrixTranslation(&lugarTree2, xzTree2.x, yTree2, xzTree2.y);
 
 		D3DXMATRIX escalaAtaud, lugarAtaud;
-		D3DXMatrixScaling(&escalaAtaud, 1.5f, 1.5f, 1.5f);
-		D3DXVECTOR2 xzAtaud(35.0f, 40.0f);
-		float yAtaud = terreno->getTerrainCollision(xzAtaud) + 0.05f;
+		D3DXMatrixScaling(&escalaAtaud, 0.75f, 0.75f, 0.75f);
+		D3DXVECTOR2 xzAtaud(150.0f, 205.0f);
+		float yAtaud = terreno->getTerrainCollision(xzAtaud) + 1.0f * 0.75f + 0.05f;
 		D3DXMatrixTranslation(&lugarAtaud, xzAtaud.x, yAtaud, xzAtaud.y);
 
 		D3DXMATRIX escalaCalaca, lugarCalaca;
 		D3DXMatrixScaling(&escalaCalaca, 2.0f, 2.0f, 2.0f);
-		D3DXVECTOR2 xzCalaca(45.0f, 35.0f);
+		D3DXVECTOR2 xzCalaca(135.0f, 170.0f);
 		float yCalaca = terreno->getTerrainCollision(xzCalaca) + 0.05f;
 		D3DXMatrixTranslation(&lugarCalaca, xzCalaca.x, yCalaca, xzCalaca.y);
 
 		D3DXMATRIX escalaCalaca2, lugarCalaca2;
 		D3DXMatrixScaling(&escalaCalaca2, 2.0f, 2.0f, 2.0f);
-		D3DXVECTOR2 xzCalaca2(50.0f, 40.0f);
+		D3DXVECTOR2 xzCalaca2(165.0f, 170.0f);
 		float yCalaca2 = terreno->getTerrainCollision(xzCalaca2) + 0.05f;
 		D3DXMatrixTranslation(&lugarCalaca2, xzCalaca2.x, yCalaca2, xzCalaca2.y);
 
 		D3DXMATRIX escalaCastillo, lugarCastillo;
 		D3DXMatrixScaling(&escalaCastillo, 2.0f, 2.0f, 2.0f);
-		D3DXVECTOR2 xzCastillo(80.0f, 130.0f);
+		D3DXVECTOR2 xzCastillo(150.0f, 250.0f);
 		float yCastillo = terreno->getTerrainCollision(xzCastillo) + 0.05f;
 		D3DXMatrixTranslation(&lugarCastillo, xzCastillo.x, yCastillo, xzCastillo.y);
 
 		D3DXMATRIX escalaAm1, lugarAm1;
 		D3DXMatrixScaling(&escalaAm1, 0.6f, 0.6f, 0.6f);
-		D3DXVECTOR2 xzAm1(20.0f, 20.0f);
+		D3DXVECTOR2 xzAm1(45.0f, 45.0f);
 		float yAm1 = terreno->getTerrainCollision(xzAm1) + 0.889f * 0.6f + 0.05f;
 		D3DXMatrixTranslation(&lugarAm1, xzAm1.x, yAm1, xzAm1.y);
 
 		D3DXMATRIX escalaAm2, lugarAm2;
 		D3DXMatrixScaling(&escalaAm2, 0.6f, 0.6f, 0.6f);
-		D3DXVECTOR2 xzAm2(15.0f, 30.0f);
+		D3DXVECTOR2 xzAm2(70.0f, 30.0f);
 		float yAm2 = terreno->getTerrainCollision(xzAm2) + 0.889f * 0.6f + 0.05f;
 		D3DXMatrixTranslation(&lugarAm2, xzAm2.x, yAm2, xzAm2.y);
 
@@ -433,7 +435,7 @@ public:
 		terreno->DrawScene(camara);
 		skydomo->DrawScene(skyCamara);
 
-		Bitmap->DrawBitmap(camara);
+		//Bitmap->DrawBitmap(camara);
 
 
 		//Present the backbuffer to the screen
