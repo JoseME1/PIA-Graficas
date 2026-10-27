@@ -185,18 +185,47 @@ public:
 		return true;
 	}
 
+	void ReacquireInput()
+	{
+		if (DIKeyboard)
+		{
+			DIKeyboard->Unacquire();
+			DIKeyboard->Acquire();
+		}
+		if (DIMouse)
+		{
+			DIMouse->Unacquire();
+			DIMouse->Acquire();
+		}
+		ZeroMemory(&mouseLastState, sizeof(mouseLastState));
+	}
+
 	void DetectInput()
 	{
 		DIMOUSESTATE mouseCurrState;
+		ZeroMemory(&mouseCurrState, sizeof(mouseCurrState));
 
 		BYTE keyboardState[256];
+		ZeroMemory(keyboardState, sizeof(keyboardState));
 
 		DIKeyboard->Acquire();
-		DIMouse->Acquire();
 
-		DIMouse->GetDeviceState(sizeof(DIMOUSESTATE), &mouseCurrState);
+		if (FAILED(DIMouse->Acquire()))
+		{
+			DIMouse->Unacquire();
+			DIMouse->Acquire();
+		}
 
-		DIKeyboard->GetDeviceState(sizeof(keyboardState),(LPVOID)&keyboardState);
+		if (FAILED(DIMouse->GetDeviceState(sizeof(DIMOUSESTATE), &mouseCurrState)))
+		{
+			ZeroMemory(&mouseCurrState, sizeof(mouseCurrState));
+			mouseLastState = mouseCurrState;
+		}
+
+		if (FAILED(DIKeyboard->GetDeviceState(sizeof(keyboardState), (LPVOID)&keyboardState)))
+		{
+			ZeroMemory(keyboardState, sizeof(keyboardState));
+		}
 
 		float speed = 0.01f;
 

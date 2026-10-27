@@ -187,6 +187,11 @@ LRESULT CALLBACK WndProc(HWND hwnd,
 		}
 		return 0;
 
+	case WM_ACTIVATEAPP:
+		if (dxrender)
+			dxrender->ReacquireInput();
+		return 0;
+
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
