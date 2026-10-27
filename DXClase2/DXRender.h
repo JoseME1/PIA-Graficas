@@ -155,7 +155,7 @@ public:
 
 		//terreno
 		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
-		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/dirt.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
+		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
 		
 		return true;
 	}
@@ -242,7 +242,7 @@ public:
 		{
 			XINPUT_GAMEPAD pad = padState.Gamepad;
 
-			//Stick izquierdo -> movimiento (deadzone 7849, normalizado a -1..1)
+			
 			float normLX = 0.0f;
 			float normLY = 0.0f;
 			if (pad.sThumbLX > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || pad.sThumbLX < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
@@ -254,13 +254,13 @@ public:
 			moveLeftRight += normLX * padSpeed;
 			moveBackForward += normLY * padSpeed;
 
-			//Stick derecho -> mirar (directo, igual que el mouse; deadzone 8689)
+			
 			if (pad.sThumbRX > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || pad.sThumbRX < -XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
 				camYaw += (float)pad.sThumbRX / 32767.0f * 0.008f;
 			if (pad.sThumbRY > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || pad.sThumbRY < -XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
 				camPitch -= (float)pad.sThumbRY / 32767.0f * 0.008f;
 
-			//Boton Start -> salir (equivale a ESC)
+			
 			if (pad.wButtons & XINPUT_GAMEPAD_START)
 				PostQuitMessage(0);
 		}

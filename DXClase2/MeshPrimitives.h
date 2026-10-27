@@ -897,7 +897,7 @@ public:
 		tWidth = bitmapInfoHeader.biWidth;
 		tHeight = bitmapInfoHeader.biHeight;
 
-		//Calculamos el tamaño.
+		//Calculamos el tamaï¿½o.
 		imageSize = tWidth * tHeight * 3;
 
 		//  Apartamos memoria para usar el bitmap.
@@ -949,7 +949,7 @@ public:
 				index = (tHeight * j) + i;
 
 				heightMap[index].pos.x = (float)i;
-				heightMap[index].pos.y = (float)(height /= 15.0f);
+				heightMap[index].pos.y = (float)height / 15.0f;
 				heightMap[index].pos.z = (float)j;
 
 				if (max < heightMap[index].pos.y)
@@ -964,23 +964,10 @@ public:
 		delete[] bitmapImage;
 		bitmapImage = 0;
 
-		int incrementCount, tuCount, tvCount;
-		float incrementValue, tuCoordinate, tvCoordinate;
-
-
-		// Calculamos que tanto vamos a incrementar las uvs.
-		incrementValue = (float)TEXTURE_REPEAT / (float)tWidth;
-
-		// Calculamos cuantas veces vamos a repetir la textura.
-		incrementCount = tWidth / TEXTURE_REPEAT;
-
-		// Indices para las tu y tv.
-		tuCoordinate = 0.0f;
-		tvCoordinate = 1.0f;
-
-		
-		tuCount = 0;
-		tvCount = 0;
+		// Calculamos el paso de las UV para repetir la textura TEXTURE_REPEAT veces,
+		// de forma continua y sin depender de que el ancho sea divisible.
+		float uStep = (float)TEXTURE_REPEAT / (float)(tWidth - 1);
+		float vStep = (float)TEXTURE_REPEAT / (float)(tHeight - 1);
 
 		// Loop para calcular las tu y tv de todo el heightmap.
 		for (j = 0; j<tHeight; j++)
@@ -988,30 +975,8 @@ public:
 			for (i = 0; i<tWidth; i++)
 			{
 				//  Guardamos las coordenadas de textura en el terreno.
-				heightMap[(tHeight * j) + i].tex.x = tuCoordinate;
-				heightMap[(tHeight * j) + i].tex.y = tvCoordinate;
-
-				//  incrementamos el valor de la tu y el indice tu por 1.
-				tuCoordinate += incrementValue;
-				tuCount++;
-
-				// Verificamos que no estamos al limite de la derecha en la textura y si es asi, regresamos.
-				if (tuCount == incrementCount)
-				{
-					tuCoordinate = 0.0f;
-					tuCount = 0;
-				}
-			}
-
-			//  incrementamos el valor de las tv y el indice tu por 1.
-			tvCoordinate -= incrementValue;
-			tvCount++;
-
-			//  Verificamos que no estamos al limite de arriba en la textura y si es asi, regresamos al fondo.
-			if (tvCount == incrementCount)
-			{
-				tvCoordinate = 1.0f;
-				tvCount = 0;
+				heightMap[(tHeight * j) + i].tex.x = (float)i * uStep;
+				heightMap[(tHeight * j) + i].tex.y = 1.0f - (float)j * vStep;
 			}
 		}
 
@@ -1041,9 +1006,6 @@ public:
 				// Upper left.
 				tv = heightMap[index3].tex.y;
 
-				//  Modificamos las coordenadas de textura para cubrir la orilla de arriba.
-				if (tv == 1.0f) { tv = 0.0f; }
-
 				vertex[index].pos = D3DXVECTOR3(heightMap[index3].pos.x, heightMap[index3].pos.y, heightMap[index3].pos.z);
 				vertex[index].tex = D3DXVECTOR2(heightMap[index3].tex.x, tv);
 				vertex[index].normal = vertex[index].pos;
@@ -1054,10 +1016,6 @@ public:
 				tu = heightMap[index4].tex.x;
 				tv = heightMap[index4].tex.y;
 
-				// Modificamos las coordenadas de textura para cubrir la orilla de arriba y de la derecha.
-				if (tu == 0.0f) { tu = 1.0f; }
-				if (tv == 1.0f) { tv = 0.0f; }
-
 				vertex[index].pos = D3DXVECTOR3(heightMap[index4].pos.x, heightMap[index4].pos.y, heightMap[index4].pos.z);
 				vertex[index].tex = D3DXVECTOR2(tu, tv);
 				vertex[index].normal = vertex[index].pos;
@@ -1082,10 +1040,6 @@ public:
 				tu = heightMap[index4].tex.x;
 				tv = heightMap[index4].tex.y;
 
-				// Modificamos las coordenadas de textura para cubrir la orilla de arriba y la derecha.
-				if (tu == 0.0f) { tu = 1.0f; }
-				if (tv == 1.0f) { tv = 0.0f; }
-
 				vertex[index].pos = D3DXVECTOR3(heightMap[index4].pos.x, heightMap[index4].pos.y, heightMap[index4].pos.z);
 				vertex[index].tex = D3DXVECTOR2(tu, tv);
 				vertex[index].normal = vertex[index].pos;
@@ -1094,9 +1048,6 @@ public:
 
 				// Bottom right.
 				tu = heightMap[index2].tex.x;
-
-				// Modificamos las coordenadas de textura para cubrir la orilla de la derecha.
-				if (tu == 0.0f) { tu = 1.0f; }
 
 				vertex[index].pos = D3DXVECTOR3(heightMap[index2].pos.x, heightMap[index2].pos.y, heightMap[index2].pos.z);
 				vertex[index].tex = D3DXVECTOR2(tu, heightMap[index2].tex.y);
