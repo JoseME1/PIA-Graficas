@@ -2,7 +2,7 @@
 #define _DXRender_
 
 #include "Constants.h"
-
+#include <chrono>
 #include "Camara.h"
 #include "Light.h"
 #include "MeshPrimitives.h"
@@ -52,11 +52,15 @@ private:
 
 	float rotPerFrame;
 	float sphereSpeed;
+	std::chrono::steady_clock::time_point lastTime;
+	float deltaTime = 0.016f;
+
 
 public:
 	DXRender()
 	{
 		rotPerFrame = 0.0f;
+		lastTime = std::chrono::steady_clock::now();
 	}
 
 	bool InitDevice(HWND hwnd, int Width, int Height)
@@ -229,7 +233,7 @@ public:
 			ZeroMemory(keyboardState, sizeof(keyboardState));
 		}
 
-		float speed = 0.01f;
+		float speed = 20.0f * deltaTime;
 
 		float moveLeftRight = 0;
 		float moveBackForward = 0;
@@ -238,6 +242,9 @@ public:
 		float camPitch = 0;
 
 		
+		if (keyboardState[DIK_LSHIFT] || keyboardState[DIK_RSHIFT]){
+			speed *= 2.0f;
+		}
 
 		if(keyboardState[DIK_A])
 		{
@@ -350,8 +357,16 @@ public:
 
 	void UpdateScene()
 	{
-		rotPerFrame += 0.1f;
-		g_Time += 0.005f;
+		auto now = std::chrono::steady_clock::now();
+		deltaTime = std::chrono::duration<float>(now - lastTime).count();
+		lastTime = now;
+		if (deltaTime > 0.05f) deltaTime = 0.05f;
+		if (deltaTime < 0.0f) deltaTime = 0.0f;
+
+
+		rotPerFrame += deltaTime * 6.0f;
+		g_Time += deltaTime * 0.3f;
+
 
 		//Mis Modelos
 		D3DXMATRIX escalaArbol, lugarArbol;
