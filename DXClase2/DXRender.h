@@ -322,9 +322,14 @@ public:
 		viewport.MaxDepth = 1.0f;
 
 		//set light values
-		light.direction = D3DXVECTOR3(1.0f, 0.0f, 0.0f);
+		D3DXVECTOR3 dir(0.5f, 1.0f, 0.3f);
+		D3DXVec3Normalize(&dir, &dir);
+
+		light.direction = dir;
 		light.ambient = D3DXVECTOR4(0.3f, 0.3f, 0.3f, 1.0f);
 		light.diffuse = D3DXVECTOR4(1.0f, 1.0f, 1.0f, 1.0f);
+		light.specularPower = 64.0f;
+		light.specular = D3DXVECTOR4(1.0f, 1.0f, 1.0f, 1.0f);
 
 		//Set the Viewport
 		d3d11DevCon->RSSetViewports(1, &viewport);

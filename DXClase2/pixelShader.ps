@@ -4,6 +4,7 @@ struct Light
 	float specularPower;
 	float4 ambient;
 	float4 diffuse;
+	float4 specular;
 };
 
 cbuffer ConstantBufferPS
@@ -25,16 +26,25 @@ Texture2D ObjTexture;
 Texture2D ObjNormTex;
 SamplerState ObjSamplerState;
 
-float4 PS( VS_OUTPUT input ) : SV_Target
+float4 PS(VS_OUTPUT input) : SV_TARGET
 {
-	input.normal = normalize(input.normal);
-	float4 textureColor = ObjTexture.Sample( ObjSamplerState, input.TexCoord );
+	float3 N = normalize(input.normal);
+	float3 L = normalize(light.direction);
+	float3 V = normalize(input.viewDirection);
 
-	float3 finalColor = textureColor * light.ambient;
-	finalColor += saturate(dot(light.direction, input.normal) * light.diffuse * textureColor);
+	float4 textureColor = ObjTexture.Sample(ObjSamplerState, input.TexCoord);
 
-	clip(textureColor.a - 0.9f);
+	float diff = saturate(dot(N,L));
+
+	float3 H = normalize(L+V);
+	float spec = pow(saturate(dot(N,H)), light.specularPower);
+	if (diff<=0.0) spec = 0.0f;
+
+	float3 finalColor = textureColor.rgb * light.ambient.rgb;
+	finalColor += textureColor.rgb * light.diffuse.rgb * diff;
+	finalColor += light.specular.rgb * spec;
+
+	clip(textureColor.a-0.9f);
 
 	return float4(finalColor, textureColor.a);
-	//return textureColor;
 }

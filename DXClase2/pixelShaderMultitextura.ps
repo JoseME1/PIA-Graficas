@@ -4,6 +4,7 @@ struct Light
 	float specularPower;
 	float4 ambient;
 	float4 diffuse;
+	float4 specular;
 };
 
 cbuffer ConstantBufferPS
@@ -43,9 +44,19 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 
 	textureColor += textureColor2 + textureColor3;
 
-	float3 finalColor = textureColor * light.ambient;
-	finalColor += saturate(dot(light.direction, input.normal) * light.diffuse * textureColor);
+	float3 N = normalize(input.normal);
+	float3 L = normalize(light.direction);
+	float3 V = normalize(input.viewDirection);
 
+	float diff = saturate(dot(N,L));
 
-	return float4(finalColor, 1);
+	float3 H = normalize(L+V);
+	float spec = pow(saturate(dot(N,H)), light.specularPower);
+	if (diff<=0.0f) spec = 0.0f;
+
+	float3 finalColor = textureColor.rgb * light.ambient.rgb;
+	finalColor += textureColor.rgb * light.diffuse.rgb * diff;
+	finalColor += light.specular.rgb * spec * 0.15f;
+
+	return float4(finalColor,1);
 }

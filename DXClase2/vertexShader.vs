@@ -22,10 +22,12 @@ VS_OUTPUT VS(float4 inPos : POSITION, float4 inTextCoord : TEXTURE, float3 norma
 {
     VS_OUTPUT output;
 
+	float4 worldPos = mul(inPos,World);
+
     output.Pos = mul(inPos, WorldViewProjection);
 	output.normal = mul(normal, World);
     output.TexCoord = inTextCoord;
-	output.viewDirection = normalize(CameraPos.xyz - output.Pos.xyz);
+	output.viewDirection = normalize(CameraPos.xyz - worldPos.xyz);
 	output.tangent = mul(tangent, World);
 	output.binormal = mul(binormal, World);
 	output.vectPos = inPos;
