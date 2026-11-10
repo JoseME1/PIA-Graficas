@@ -53,7 +53,7 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 
     float2 scrollUV = input.TexCoord * 0.5f + float2(Time * 0.05f, Time * 0.03f);
     float4 texColor = ObjTex.Sample(ObjSamplerState, scrollUV);
-    waterColor *= texColor.rgb;
+    waterColor = lerp(waterColor, texColor.rgb * waterColor, 0.5f);
 
 
     float3 finalColor = waterColor * light.ambient.rgb;
