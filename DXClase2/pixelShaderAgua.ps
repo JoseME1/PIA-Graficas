@@ -33,11 +33,8 @@ float4 PS( VS_OUTPUT input ) : SV_Target
     float3 L = normalize(light.direction);
     float3 V = normalize(input.viewDirection);
 
-    // Una sola onda en diagonal, no una en X y otra en Y
-    // Asi salen rayas que se mueven, no lunares
     float wave = sin((input.TexCoord.x + input.TexCoord.y) * 1.2f + Time * 2.0f);
 
-    // Normal base hacia arriba, con perturbacion suave
     float3 N = normalize(float3(wave * 0.3f, 1.0f, wave * 0.3f));
 
     float diff = saturate(dot(N, L));
@@ -46,7 +43,6 @@ float4 PS( VS_OUTPUT input ) : SV_Target
     float spec = pow(saturate(dot(N, H)), 32.0f);
     if (diff <= 0.0f) spec = 0.0f;
 
-    // Colores pegados, ya no de casi negro a casi blanco
     float3 deepColor = float3(0.0f, 0.28f, 0.45f);
     float3 shallowColor = float3(0.0f, 0.42f, 0.60f);
     float3 waterColor = lerp(deepColor, shallowColor, wave * 0.5f + 0.5f);
