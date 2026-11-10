@@ -351,7 +351,7 @@ public:
 	void UpdateScene()
 	{
 		rotPerFrame += 0.1f;
-		g_Time += 0.0001f;
+		g_Time += 0.005f;
 
 		//Mis Modelos
 		D3DXMATRIX escalaArbol, lugarArbol;
@@ -487,7 +487,7 @@ public:
 
 
 		//Present the backbuffer to the screen
-		SwapChain->Present(0, 0);
+		SwapChain->Present(1, 0);
 	}
 
 };
