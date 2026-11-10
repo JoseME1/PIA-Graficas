@@ -1,0 +1,57 @@
+struct Light
+{
+    float3 direction;
+    float specularPower;
+    float4 ambient;
+    float4 diffuse;
+    float4 specular;
+};
+
+cbuffer ConstantBufferPS
+{
+    Light light;
+    float Time;
+    float3 pad;
+};
+
+struct VS_OUTPUT
+{
+    float4 Pos : SV_POSITION;
+    float2 TexCoord : TEXTURE;
+    float3 normal : NORMAL;
+    float3 viewDirection : COORDS;
+    float3 tangent : TANGENT;
+    float3 binormal : BINORMAL;
+};
+
+float4 PS(VS_OUTPUT input) : SV_Target
+{
+    float3 dir = normalize(-input.viewDirection);
+    float h = dir.y;
+
+    float dayAngle = Time * 0.1f;
+    float sunHeight = sin(dayAngle);
+    float dayFactor = saturate(sunHeight / 0.3f);
+
+
+    float3 sunDir = normalize(float3(cos(dayAngle), sin(dayAngle), 0.3f));
+
+    float3 dayTop = float3(0.15f, 0.45f, 0.85f);
+    float3 dayHorizon = float3(0.65f, 0.80f, 0.95f);
+    float3 nightTop = float3(0.01f, 0.02f, 0.07f);
+    float3 nightHorizon = float3(0.08f, 0.10f, 0.20f);
+
+    float3 topColor = lerp(nightTop, dayTop, dayFactor);
+    float3 horizonColor = lerp(nightHorizon, dayHorizon, dayFactor);
+
+    float3 skyColor = lerp(horizonColor, topColor, saturate(h * 1.5f + 0.2f));
+
+    float sunsetFactor = pow(1.0f - abs(sunHeight), 4.0f);
+    skyColor += float3(0.95f, 0.45f, 0.15f) * sunsetFactor * saturate(1.0f - h) * 0.6f;
+
+    float sunDot = saturate(dot(dir, sunDir));
+    skyColor += float3(1.0f, 0.9f, 0.6f) * pow(sunDot, 350.0f) * 2.0f;
+    skyColor += float3(1.0f, 0.8f, 0.4f) * pow(sunDot, 8.0f) * 0.25f * dayFactor;
+
+    return float4(skyColor, 1.0f);
+}

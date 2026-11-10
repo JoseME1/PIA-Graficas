@@ -159,7 +159,7 @@ public:
 
 
 		//terreno
-		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
+		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderCielo);
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
 		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
 
@@ -366,6 +366,41 @@ public:
 
 		rotPerFrame += deltaTime * 6.0f;
 		g_Time += deltaTime * 0.3f;
+
+		float dayAngle = g_Time * 0.1f;
+		float sunHeight = sin(dayAngle);
+
+		// 0 en el horizonte, 1 cuando el sol ya subio un poco,
+		// y se queda en 1 todo el mediodia, no solo en el cenit
+		float dayFactor = sunHeight / 0.3f;
+		if (dayFactor < 0.0f) dayFactor = 0.0f;
+		if (dayFactor > 1.0f) dayFactor = 1.0f;
+
+		D3DXVECTOR3 sunDir(cos(dayAngle), sin(dayAngle), 0.3f);
+		D3DXVec3Normalize(&sunDir, &sunDir);
+		light.direction = sunDir;
+
+		if (sunHeight <= 0.0f)
+		{
+			// Noche: sin sol, sin difusa y sin especular.
+			// Solo queda un poco de ambiente, como luz de luna.
+			light.ambient = D3DXVECTOR4(0.05f, 0.05f, 0.08f, 1.0f);
+			light.diffuse = D3DXVECTOR4(0.0f, 0.0f, 0.0f, 1.0f);
+			light.specular = D3DXVECTOR4(0.0f, 0.0f, 0.0f, 1.0f);
+		}
+		else
+		{
+			light.ambient = D3DXVECTOR4(0.05f + 0.25f * dayFactor,
+				0.05f + 0.25f * dayFactor,
+				0.05f + 0.25f * dayFactor, 1.0f);
+			light.diffuse = D3DXVECTOR4(0.15f + 0.85f * dayFactor,
+				0.15f + 0.85f * dayFactor,
+				0.15f + 0.85f * dayFactor, 1.0f);
+			// Aqui esta la correccion del especular de noche
+			light.specular = D3DXVECTOR4(dayFactor, dayFactor, dayFactor, 1.0f);
+		}
+
+
 
 
 		//Mis Modelos

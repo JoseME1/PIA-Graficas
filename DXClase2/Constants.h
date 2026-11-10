@@ -5,5 +5,6 @@ enum shaders
 	ShaderNormalmap = 2,
 	ShaderGUI = 3,
 	ShaderMultitextura = 4,
-	ShaderAgua = 5
+	ShaderAgua = 5,
+	ShaderCielo = 6
 };
