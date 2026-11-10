@@ -31,6 +31,7 @@ private:
 
 	MPrimitives *skydomo;
 	MPrimitives *terreno;
+	MPrimitives* agua;
 	//MPrimitives *Bitmap;
 
 	//MIS MODELOS
@@ -156,7 +157,8 @@ public:
 		//terreno
 		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderDiffuse);
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
-		
+		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
+
 		return true;
 	}
 
@@ -349,6 +351,7 @@ public:
 	void UpdateScene()
 	{
 		rotPerFrame += 0.1f;
+		g_Time += 0.0001f;
 
 		//Mis Modelos
 		D3DXMATRIX escalaArbol, lugarArbol;
@@ -417,6 +420,14 @@ public:
 		float yAm2 = terreno->getTerrainCollision(xzAm2) + 0.889f * 0.6f + 0.05f;
 		D3DXMatrixTranslation(&lugarAm2, xzAm2.x, yAm2, xzAm2.y);
 
+		D3DXMATRIX escalaAgua, lugarAgua;
+		D3DXMatrixScaling(&escalaAgua, 2.0f, 1.0f, 2.0f);
+		D3DXVECTOR2 xzAgua(20.0f, 20.0f);
+		float yAgua = terreno->getTerrainCollision(xzAgua)-10.5f;
+		D3DXMatrixTranslation(&lugarAgua, xzAgua.x, yAgua, xzAgua.y);
+		
+
+
 		//Mis Modelos
 		arbol->UpdateScene(escalaArbol * lugarArbol);
 		barril->UpdateScene(escalaBarril * lugarBarril);
@@ -429,6 +440,7 @@ public:
 		castillo->UpdateScene(escalaCastillo * lugarCastillo);
 		arbolmuerto1->UpdateScene(escalaAm1 * lugarAm1);
 		arbolmuerto2->UpdateScene(escalaAm2 * lugarAm2);
+		agua->UpdateScene(escalaAgua * lugarAgua);
 		
 
 		D3DXMATRIX skyRotMat, terrMat;
@@ -465,6 +477,8 @@ public:
 		castillo->DrawScene(camara);
 		arbolmuerto1->DrawScene(camara);
 		arbolmuerto2->DrawScene(camara);
+		agua->DrawScene(camara);
+
 
 		terreno->DrawScene(camara);
 		skydomo->DrawScene(skyCamara);

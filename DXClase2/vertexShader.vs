@@ -4,6 +4,8 @@ cbuffer ConstantBuffer
 	float4x4 World;
 	float3 CameraPos;
 	float MaxH;
+	float Time;
+	float3 pad;
 };
 
 struct VS_OUTPUT

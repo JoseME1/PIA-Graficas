@@ -1,0 +1,64 @@
+struct Light 
+{
+	float3 direction;
+	float specularPower;
+	float4 ambient;
+	float4 diffuse;
+	float4 specular;
+};
+
+cbuffer ConstantBufferPS
+{
+	Light light;
+	float Time;
+	float3 pad;
+};
+
+Texture2D ObjTex;
+SamplerState ObjSamplerState;
+
+
+struct VS_OUTPUT 
+{
+	float4 Pos : SV_POSITION;
+	float2 TexCoord : TEXTURE;
+	float3 normal : NORMAL;
+	float3 viewDirection : COORDS;
+	float3 tangent : TANGENT;
+	float3 binormal : BINORMAL;
+};
+
+float4 PS( VS_OUTPUT input ) : SV_Target
+{
+    float3 L = normalize(light.direction);
+    float3 V = normalize(input.viewDirection);
+
+    // Una sola onda en diagonal, no una en X y otra en Y
+    // Asi salen rayas que se mueven, no lunares
+    float wave = sin((input.TexCoord.x + input.TexCoord.y) * 1.2f + Time * 2.0f);
+
+    // Normal base hacia arriba, con perturbacion suave
+    float3 N = normalize(float3(wave * 0.3f, 1.0f, wave * 0.3f));
+
+    float diff = saturate(dot(N, L));
+
+    float3 H = normalize(L + V);
+    float spec = pow(saturate(dot(N, H)), 32.0f);
+    if (diff <= 0.0f) spec = 0.0f;
+
+    // Colores pegados, ya no de casi negro a casi blanco
+    float3 deepColor = float3(0.0f, 0.28f, 0.45f);
+    float3 shallowColor = float3(0.0f, 0.42f, 0.60f);
+    float3 waterColor = lerp(deepColor, shallowColor, wave * 0.5f + 0.5f);
+
+    float2 scrollUV = input.TexCoord * 0.5f + float2(Time * 0.05f, Time * 0.03f);
+    float4 texColor = ObjTex.Sample(ObjSamplerState, scrollUV);
+    waterColor *= texColor.rgb;
+
+
+    float3 finalColor = waterColor * light.ambient.rgb;
+    finalColor += waterColor * light.diffuse.rgb * diff;
+    finalColor += light.specular.rgb * spec * 0.3f;
+
+    return float4(finalColor, 1.0f);
+}

@@ -55,11 +55,15 @@ private:
 		D3DXMATRIX World;
 		D3DXVECTOR3 CameraPos;
 		float MaxH;
+		float Time;
+		float pad[3];
 	} consBuff;
 
 	struct ConstantBufferPS
 	{
 		Light  light;
+		float Time;
+		float pad[3];
 	} consBuffPS;
 
 	//The vertex Structure
@@ -209,6 +213,7 @@ public:
 		};
 		UINT numElements = ARRAYSIZE(layout);
 		LPCWSTR pixelShaderFile = L"pixelShader.ps";
+		LPCWSTR vertexShaderFile = L"vertexShader.vs";
 
 		switch (ShaderType)
 		{
@@ -224,6 +229,12 @@ public:
 		case ShaderMultitextura:
 			pixelShaderFile = L"pixelShaderMultitextura.ps";
 			break;
+		case ShaderAgua: 
+			pixelShaderFile=L"pixelShaderAgua.ps";
+			vertexShaderFile = L"vertexShaderAgua.vs";
+
+			break;
+
 		default:
 			break;
 		}
@@ -231,8 +242,9 @@ public:
 		
 
 		//Compile Shaders from shader file
-		D3DX11CompileFromFile(L"vertexShader.vs", 0, 0, "VS", "vs_4_0", 0, 0, 0, &VS_Buffer, 0, 0);
+		D3DX11CompileFromFile(vertexShaderFile, 0, 0, "VS", "vs_4_0", 0, 0, 0, &VS_Buffer, 0, 0);
 		D3DX11CompileFromFile(pixelShaderFile, 0, 0, "PS", "ps_4_0", 0, 0, 0, &PS_Buffer, 0, 0);
+
 
 		//Create the Shader Objects
 		d3d11Device->CreateVertexShader(VS_Buffer->GetBufferPointer(),
@@ -1279,6 +1291,7 @@ public:
 		D3DXMatrixTranspose(&consBuff.WorldViewProjection, &WorldViewProjection);
 		D3DXMatrixTranspose(&consBuff.World, &World);
 		consBuff.CameraPos = camara->Position;
+		consBuff.Time = g_Time;
 		d3d11DevCon->UpdateSubresource(cbBuffer, 0, NULL, &consBuff, 0, 0);
 		d3d11DevCon->VSSetConstantBuffers(0, 1, &cbBuffer);
 
@@ -1299,6 +1312,7 @@ public:
 		d3d11DevCon->PSSetSamplers(0, 1, &TexSamplerState);
 
 		consBuffPS.light = light;
+		consBuffPS.Time = g_Time;
 		d3d11DevCon->UpdateSubresource(cbBufferPS, 0, NULL, &consBuffPS, 0, 0);
 		d3d11DevCon->PSSetConstantBuffers(0, 1, &cbBufferPS);
 

@@ -49,6 +49,12 @@
     <None Include="pixelShaderMultitextura.ps">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="pixelShaderAgua.ps">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="vertexShaderAgua.vs">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Text Include="pixelShaderNormalMap.ps">
