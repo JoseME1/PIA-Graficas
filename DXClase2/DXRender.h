@@ -64,7 +64,7 @@ private:
 	{
 		float minX, maxX, minZ, maxZ;
 	};
-	BoxCollider castleWalls[19];
+	BoxCollider castleWalls[20];
 
 	Camara *camara;
 	Camara *skyCamara;
@@ -425,6 +425,8 @@ public:
 		castleWalls[16] = { 156.6f, 171.4f, 235.0f, 237.0f }; // Z -7 este
 		castleWalls[17] = { 128.4f, 143.2f, 263.0f, 265.0f }; // Z +7 oeste
 		castleWalls[18] = { 156.6f, 171.4f, 263.0f, 265.0f }; // Z +7 este
+		// Escalera central (local X -1 a +1, Z -1.5 a 2.5, sube hacia el norte)
+		castleWalls[19] = { 147.0f, 153.0f, 246.0f, 256.0f }; // escalera
 		audio.Init(L"Sonidos/ambient.wav", audioVolume);
 		return true;
 	}
@@ -596,7 +598,7 @@ public:
 		}
 
 		// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
-		for (int i = 0; i < 19; i++)
+		for (int i = 0; i < 20; i++)
 		{
 			float minX = castleWalls[i].minX - playerRadius;
 			float maxX = castleWalls[i].maxX + playerRadius;
@@ -659,7 +661,7 @@ public:
 		// Debug de colisiones: mantener C presionada para verlas en rojo
 		if (showColliders)
 		{
-			for (int i = 0; i < 19; i++)
+			for (int i = 0; i < 20; i++)
 			{
 				float cx = (castleWalls[i].minX + castleWalls[i].maxX) * 0.5f;
 				float cz = (castleWalls[i].minZ + castleWalls[i].maxZ) * 0.5f;
