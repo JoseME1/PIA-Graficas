@@ -183,6 +183,16 @@ public:
 		createBillboard();
 	}
 
+	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Height, float Width, LPCWSTR texturePath, int ShaderType)
+	{
+		this->Height = Height;
+		this->Width = Width;
+		faceToCam = true;
+
+		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderType);
+		createBillboard();
+	}
+
 	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Height, float Width, LPCWSTR texturePath, Camara* camara){
 
 
@@ -235,6 +245,9 @@ public:
 			break;
 		case ShaderCielo:
 			pixelShaderFile = L"pixelShaderCielo.ps";
+			break;
+		case ShaderPasto:
+			vertexShaderFile = L"vertexShaderPasto.vs";
 			break;
 		default:
 			break;

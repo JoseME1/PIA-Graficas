@@ -51,6 +51,7 @@ private:
 	MPrimitives* arbolmuerto1;
 	MPrimitives* arbolmuerto2;
 	MPrimitives* debugBox;
+	MPrimitives* pasto[48];
 	bool showColliders = false;
 	D3DXVECTOR3 playerPos;
 	bool thirdPerson = false;
@@ -196,6 +197,8 @@ public:
 		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderCielo);
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
 		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
+		for (int i = 0; i < 48; i++)
+			pasto[i] = new MPrimitives(d3d11Device, d3d11DevCon, 3.0f, 4.0f, L"Texturas/pasto.png", ShaderPasto);
 
 		debugBox = new MPrimitives(d3d11Device, d3d11DevCon, 1.0f, L"Texturas/rojo.jpg", L"", ShaderDiffuse);
 
@@ -595,6 +598,17 @@ public:
 		//D3DXMatrixTranslation(&terrMat, -50, 0, -50);
 		D3DXMatrixIdentity(&terrMat);
 		terreno->UpdateScene(terrMat);
+
+		// Pasto con movimiento (48 manojos)
+		static float pastoXZ[48][2] = { {111.0f, 67.7f}, {192.7f, 48.1f}, {164.0f, 121.4f}, {44.5f, 156.9f}, {39.4f, 138.4f}, {47.5f, 52.7f}, {61.0f, 85.8f}, {186.9f, 266.9f}, {174.3f, 129.2f}, {274.1f, 41.6f}, {244.6f, 102.4f}, {66.1f, 59.4f}, {107.1f, 234.0f}, {75.2f, 175.4f}, {189.7f, 123.1f}, {166.9f, 45.7f}, {44.9f, 81.5f}, {200.1f, 136.9f}, {108.5f, 176.4f}, {143.3f, 104.9f}, {228.6f, 204.7f}, {91.0f, 173.6f}, {212.4f, 102.0f}, {275.0f, 59.5f}, {134.5f, 219.3f}, {68.0f, 152.2f}, {39.8f, 197.1f}, {221.1f, 173.3f}, {248.9f, 108.4f}, {203.8f, 178.6f}, {175.0f, 144.1f}, {240.0f, 266.2f}, {45.2f, 205.4f}, {191.8f, 278.3f}, {235.5f, 101.1f}, {126.4f, 197.2f}, {35.6f, 145.4f}, {44.7f, 222.1f}, {62.3f, 91.9f}, {50.1f, 142.3f}, {234.8f, 246.0f}, {99.6f, 133.8f}, {269.4f, 67.7f}, {74.1f, 88.0f}, {88.3f, 151.2f}, {177.3f, 95.7f}, {31.0f, 134.7f}, {122.3f, 171.6f} };
+		for (int i = 0; i < 48; i++)
+		{
+			D3DXMATRIX lugarPasto;
+			D3DXVECTOR2 xzPasto(pastoXZ[i][0], pastoXZ[i][1]);
+			float yPasto = terreno->getTerrainCollision(xzPasto) + 1.5f;
+			D3DXMatrixTranslation(&lugarPasto, xzPasto.x, yPasto, xzPasto.y);
+			pasto[i]->UpdateScene(lugarPasto);
+		}
 		
 		
 		if (playerPos.x < 25.0f) playerPos.x = 25.0f;
@@ -677,6 +691,8 @@ public:
 		castillo->DrawScene(camara);
 		arbolmuerto1->DrawScene(camara);
 		arbolmuerto2->DrawScene(camara);
+		for (int i = 0; i < 48; i++)
+			pasto[i]->DrawScene(camara);
 		agua->DrawScene(camara);
 
 
