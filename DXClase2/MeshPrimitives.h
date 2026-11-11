@@ -247,7 +247,7 @@ public:
 		D3DX11CompileFromFile(pixelShaderFile, 0, 0, "PS", "ps_4_0", 0, 0, 0, &PS_Buffer, 0, 0);
 
 		//DEBUG PARA EXCEPCIONES DE PIXEL SHADER, DESCOMENTAR EN CASO DE EXCEPCION
-		ID3D10Blob* errorBlob = nullptr;
+		/*ID3D10Blob* errorBlob = nullptr;
 		HRESULT hrVS = D3DX11CompileFromFile(L"vertexShader.vs", 0, 0, "VS", "vs_4_0", 0, 0, 0, &VS_Buffer, &errorBlob, 0);
 		if (FAILED(hrVS) && errorBlob)
 			MessageBoxA(NULL, (char*)errorBlob->GetBufferPointer(), "Error VS", MB_OK);
@@ -256,7 +256,7 @@ public:
 		HRESULT hrPS = D3DX11CompileFromFile(pixelShaderFile, 0, 0, "PS", "ps_4_0", 0, 0, 0, &PS_Buffer, &errorBlob, 0);
 		if (FAILED(hrPS) && errorBlob)
 			MessageBoxA(NULL, (char*)errorBlob->GetBufferPointer(), "Error PS", MB_OK);
-		
+		*/
 
 
 		//Create the Shader Objects

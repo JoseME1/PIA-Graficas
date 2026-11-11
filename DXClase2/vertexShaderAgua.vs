@@ -25,8 +25,8 @@ VS_OUTPUT VS(float4 inPos : POSITION, float4 inTextCoord : TEXTURE, float3 norma
     VS_OUTPUT output;
 
 	float4 displacedPos = inPos;
-	displacedPos.y += sin(inPos.x * 0.5f + Time * 2.0f) * 0.3f;
-	displacedPos.y += cos(inPos.z * 0.5f + Time * 1.6f) * 0.3f;
+	displacedPos.y += sin(inPos.x * 0.5f + Time * 1.0f) * 0.3f;
+	displacedPos.y += cos(inPos.z * 0.5f + Time * 0.5f) * 0.3f;
 
 	float4 worldPos = mul(displacedPos, World);
 	output.Pos = mul(displacedPos, WorldViewProjection);

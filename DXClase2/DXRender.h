@@ -376,7 +376,7 @@ public:
 		if (dayFactor < 0.0f) dayFactor = 0.0f;
 		if (dayFactor > 1.0f) dayFactor = 1.0f;
 
-		D3DXVECTOR3 sunDir(cos(dayAngle), sin(dayAngle), 0.3f);
+		D3DXVECTOR3 sunDir(cos(dayAngle), sin(dayAngle), cos(dayAngle) * 0.6f);
 		D3DXVec3Normalize(&sunDir, &sunDir);
 		light.direction = sunDir;
 
@@ -390,13 +390,12 @@ public:
 		}
 		else
 		{
-			light.ambient = D3DXVECTOR4(0.05f + 0.25f * dayFactor,
-				0.05f + 0.25f * dayFactor,
-				0.05f + 0.25f * dayFactor, 1.0f);
+			light.ambient = D3DXVECTOR4(0.10f + 0.30f * dayFactor,
+				0.10f + 0.30f * dayFactor,
+				0.10f + 0.30f * dayFactor, 1.0f);
 			light.diffuse = D3DXVECTOR4(0.15f + 0.85f * dayFactor,
 				0.15f + 0.85f * dayFactor,
 				0.15f + 0.85f * dayFactor, 1.0f);
-			// Aqui esta la correccion del especular de noche
 			light.specular = D3DXVECTOR4(dayFactor, dayFactor, dayFactor, 1.0f);
 		}
 
