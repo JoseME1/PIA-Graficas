@@ -44,7 +44,7 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 
 	textureColor += textureColor2 + textureColor3;
 
-	float3 N = normalize(input.normal);
+	float3 N = float3(0.0f, 1.0f, 0.0f);
 	float3 L = normalize(light.direction);
 	float3 V = normalize(input.viewDirection);
 

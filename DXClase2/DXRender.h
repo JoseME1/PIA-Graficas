@@ -343,7 +343,7 @@ public:
 		light.direction = dir;
 		light.ambient = D3DXVECTOR4(0.3f, 0.3f, 0.3f, 1.0f);
 		light.diffuse = D3DXVECTOR4(1.0f, 1.0f, 1.0f, 1.0f);
-		light.specularPower = 64.0f;
+		light.specularPower = 32.0f;
 		light.specular = D3DXVECTOR4(1.0f, 1.0f, 1.0f, 1.0f);
 
 		//Set the Viewport
@@ -508,7 +508,10 @@ public:
 		terreno->UpdateScene(terrMat);
 		
 		
-
+		if (camara->Position.x < 25.0f) camara->Position.x = 25.0f;
+		if (camara->Position.x > 280.0f) camara->Position.x = 280.0f;
+		if (camara->Position.z < 25.0f) camara->Position.z = 25.0f;
+		if (camara->Position.z > 280.0f) camara->Position.z = 280.0f;
 		camara->Position.y = terreno->getTerrainCollision(camara->getXZ()) +3;
 	}
 
