@@ -64,7 +64,7 @@ private:
 	{
 		float minX, maxX, minZ, maxZ;
 	};
-	BoxCollider castleWalls[5];
+	BoxCollider castleWalls[19];
 
 	Camara *camara;
 	Camara *skyCamara;
@@ -400,11 +400,31 @@ public:
 		colliders[9] = { 70.0f, 30.0f, 1.0f };    // arbolmuerto2
 		// Paredes del castillo (modelo 63 x 40 en el mundo, X 118-182, Z 230-270)
 		// Puerta en la pared sur, hueco de X 147 a 153
+		// Paredes exteriores
 		castleWalls[0] = { 118.0f, 182.0f, 268.0f, 270.0f }; // norte
 		castleWalls[1] = { 118.0f, 147.0f, 230.0f, 232.0f }; // sur izquierda
 		castleWalls[2] = { 153.0f, 182.0f, 230.0f, 232.0f }; // sur derecha
 		castleWalls[3] = { 118.0f, 120.0f, 230.0f, 270.0f }; // oeste
 		castleWalls[4] = { 180.0f, 182.0f, 230.0f, 270.0f }; // este
+		// Paredes internas, medidas del modelo (local * 2 + centro 150, 250)
+		// Verticales X = -10.5 y +10.5, de lado a lado
+		castleWalls[5] = { 128.0f, 130.0f, 230.8f, 269.8f }; // X -10.5
+		castleWalls[6] = { 170.0f, 172.0f, 231.0f, 269.6f }; // X +10.5
+		// Verticales X = -3.5 y +3.5, con puerta al centro (Z 245.8 - 250.4)
+		castleWalls[7] = { 142.0f, 144.0f, 231.2f, 245.8f }; // X -3.5 sur
+		castleWalls[8] = { 142.0f, 144.0f, 250.4f, 269.8f }; // X -3.5 norte
+		castleWalls[9] = { 156.0f, 158.0f, 231.2f, 245.8f }; // X +3.5 sur
+		castleWalls[10] = { 156.0f, 158.0f, 250.4f, 269.6f }; // X +3.5 norte
+		// Horizontales Z = -4.5 y +5, con puerta al centro (X 147.6 - 152.2)
+		castleWalls[11] = { 119.0f, 147.6f, 240.0f, 242.0f }; // Z -4.5 oeste
+		castleWalls[12] = { 152.2f, 181.0f, 240.0f, 242.0f }; // Z -4.5 este
+		castleWalls[13] = { 119.0f, 147.6f, 259.0f, 261.0f }; // Z +5 oeste
+		castleWalls[14] = { 152.2f, 181.0f, 259.0f, 261.0f }; // Z +5 este
+		// Horizontales Z = -7 y +7, con paso ancho al centro (X 143.2 - 156.6)
+		castleWalls[15] = { 128.4f, 143.2f, 235.0f, 237.0f }; // Z -7 oeste
+		castleWalls[16] = { 156.6f, 171.4f, 235.0f, 237.0f }; // Z -7 este
+		castleWalls[17] = { 128.4f, 143.2f, 263.0f, 265.0f }; // Z +7 oeste
+		castleWalls[18] = { 156.6f, 171.4f, 263.0f, 265.0f }; // Z +7 este
 		audio.Init(L"Sonidos/ambient.wav", audioVolume);
 		return true;
 	}
@@ -576,7 +596,7 @@ public:
 		}
 
 		// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
-		for (int i = 0; i < 5; i++)
+		for (int i = 0; i < 19; i++)
 		{
 			float minX = castleWalls[i].minX - playerRadius;
 			float maxX = castleWalls[i].maxX + playerRadius;
@@ -639,7 +659,7 @@ public:
 		// Debug de colisiones: mantener C presionada para verlas en rojo
 		if (showColliders)
 		{
-			for (int i = 0; i < 5; i++)
+			for (int i = 0; i < 19; i++)
 			{
 				float cx = (castleWalls[i].minX + castleWalls[i].maxX) * 0.5f;
 				float cz = (castleWalls[i].minZ + castleWalls[i].maxZ) * 0.5f;
