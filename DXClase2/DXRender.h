@@ -21,6 +21,8 @@ private:
 	ID3D11DeviceContext* d3d11DevCon;
 	ID3D11RenderTargetView* renderTargetView;
 	ID3D11DepthStencilView* depthStencilView;
+	ID3D11DepthStencilState* depthDisabledState = nullptr;
+
 
 	IDirectInputDevice8* DIKeyboard;
 	IDirectInputDevice8* DIMouse;
@@ -34,7 +36,7 @@ private:
 	MPrimitives *skydomo;
 	MPrimitives *terreno;
 	MPrimitives* agua;
-	//MPrimitives *Bitmap;
+	MPrimitives *Bitmap;
 
 	//MIS MODELOS
 	MPrimitives *arbol;
@@ -145,6 +147,15 @@ public:
 		//Create the Depth/Stencil View
 		d3d11Device->CreateTexture2D(&depthStencilDesc, NULL, &depthStencilBuffer);
 		d3d11Device->CreateDepthStencilView(depthStencilBuffer, NULL, &depthStencilView);
+
+		D3D11_DEPTH_STENCIL_DESC dsDesc;
+		ZeroMemory(&dsDesc, sizeof(dsDesc));
+		dsDesc.DepthEnable = FALSE;
+		dsDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+		dsDesc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+		dsDesc.StencilEnable = FALSE;
+		d3d11Device->CreateDepthStencilState(&dsDesc, &depthDisabledState);
+
 
 		//Set our Render Target
 		d3d11DevCon->OMSetRenderTargets( 1, &renderTargetView, depthStencilView );
@@ -356,7 +367,7 @@ public:
 		camara = new Camara(Position,Target,Up, Width, Height);
 		skyCamara = new Camara(Position,Target,Up, Width, Height);
 		//esta es la gui
-		//Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
+		Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
 		audio.Init(L"Sonidos/ambient.wav", audioVolume);
 		return true;
 	}
@@ -523,6 +534,7 @@ public:
 		//Refresh the Depth/Stencil view
 		d3d11DevCon->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH|D3D11_CLEAR_STENCIL, 1.0f, 0);
 		
+
 		//Mis modelos
 		barril->DrawScene(camara);
 		arbol->DrawScene(camara);
@@ -541,7 +553,10 @@ public:
 		terreno->DrawScene(camara);
 		skydomo->DrawScene(skyCamara);
 
-		//Bitmap->DrawBitmap(camara);
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		Bitmap->DrawBitmap(camara);
+		d3d11DevCon->OMSetDepthStencilState(nullptr, 0);
+
 
 
 		//Present the backbuffer to the screen
