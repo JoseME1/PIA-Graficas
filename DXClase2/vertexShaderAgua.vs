@@ -18,6 +18,9 @@ struct VS_OUTPUT
 	float3 binormal : BINORMAL;
 	float4 vectPos : POSITION;
 	float maxHeight : HEIGHT;
+	float3 worldPos : WORLDPOS;
+float fogDist : FOGDIST;
+
 };
 
 VS_OUTPUT VS(float4 inPos : POSITION, float4 inTextCoord : TEXTURE, float3 normal : NORMAL, float3 tangent : TANGENT, float3 binormal : BINORMAL)
@@ -29,6 +32,9 @@ VS_OUTPUT VS(float4 inPos : POSITION, float4 inTextCoord : TEXTURE, float3 norma
 	displacedPos.y += cos(inPos.z * 0.5f + Time * 0.5f) * 0.3f;
 
 	float4 worldPos = mul(displacedPos, World);
+	output.worldPos = worldPos.xyz;
+output.fogDist = length(CameraPos.xyz - worldPos.xyz);
+
 	output.Pos = mul(displacedPos, WorldViewProjection);
 
 	output.normal = mul(normal, World);
