@@ -6,6 +6,8 @@
 #include "Camara.h"
 #include "Light.h"
 #include "MeshPrimitives.h"
+#include "AudioManager.h"
+
 
 #include <Xinput.h>
 #pragma comment(lib, "Xinput.lib")
@@ -49,6 +51,9 @@ private:
 
 	Camara *camara;
 	Camara *skyCamara;
+	AudioManager audio;
+	float audioVolume = 0.3f;
+
 
 	float rotPerFrame;
 	float sphereSpeed;
@@ -310,6 +315,7 @@ public:
 	void ReleaseObjects()
 	{
 		//Release the COM Objects we created
+		audio.Shutdown();
 		SwapChain->Release();
 		d3d11Device->Release();
 		d3d11DevCon->Release();
@@ -351,7 +357,7 @@ public:
 		skyCamara = new Camara(Position,Target,Up, Width, Height);
 		//esta es la gui
 		//Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
-
+		audio.Init(L"Sonidos/ambient.wav", audioVolume);
 		return true;
 	}
 

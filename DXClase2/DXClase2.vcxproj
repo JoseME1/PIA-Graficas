@@ -84,6 +84,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AudioManager.h" />
     <ClInclude Include="Camara.h" />
     <ClInclude Include="Constants.h" />
     <ClInclude Include="DXRender.h" />
