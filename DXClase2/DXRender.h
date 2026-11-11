@@ -198,7 +198,7 @@ public:
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
 		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
 		for (int i = 0; i < 150; i++)
-			pasto[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.5f, L"Texturas/pasto.png", ShaderPasto);
+			pasto[i] = new MPrimitives(d3d11Device, d3d11DevCon,1.5f, 3.0f, L"Texturas/pasto.png", ShaderPasto);
 
 		debugBox = new MPrimitives(d3d11Device, d3d11DevCon, 1.0f, L"Texturas/rojo.jpg", L"", ShaderDiffuse);
 
@@ -606,7 +606,7 @@ public:
 		{
 			D3DXMATRIX lugarPasto;
 			D3DXVECTOR2 xzPasto(pastoXZ[i][0], pastoXZ[i][1]);
-			float yPasto = terreno->getTerrainCollision(xzPasto) + 1.0f;
+			float yPasto = terreno->getTerrainCollision(xzPasto) +0.75f;
 			D3DXMatrixTranslation(&lugarPasto, xzPasto.x, yPasto, xzPasto.y);
 			pasto[i]->UpdateScene(lugarPasto);
 		}
