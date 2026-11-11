@@ -50,6 +50,21 @@ private:
 	MPrimitives* castillo;
 	MPrimitives* arbolmuerto1;
 	MPrimitives* arbolmuerto2;
+	MPrimitives* debugBox;
+	bool showColliders = false;
+
+	struct CircleCollider
+	{
+		float x, z, radius;
+	};
+	CircleCollider colliders[10];
+	float playerRadius = 1.0f;
+
+	struct BoxCollider
+	{
+		float minX, maxX, minZ, maxZ;
+	};
+	BoxCollider castleWalls[5];
 
 	Camara *camara;
 	Camara *skyCamara;
@@ -179,6 +194,8 @@ public:
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
 		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
 
+		debugBox = new MPrimitives(d3d11Device, d3d11DevCon, 1.0f, L"Texturas/rojo.jpg", L"", ShaderDiffuse);
+
 		return true;
 	}
 
@@ -261,6 +278,8 @@ public:
 		if (keyboardState[DIK_LSHIFT] || keyboardState[DIK_RSHIFT]){
 			speed *= 2.0f;
 		}
+
+		showColliders = (keyboardState[DIK_C] != 0);
 
 		if(keyboardState[DIK_A])
 		{
@@ -368,6 +387,24 @@ public:
 		skyCamara = new Camara(Position,Target,Up, Width, Height);
 		//esta es la gui
 		Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
+		// Colisiones: circulos para los objetos chicos, paredes para el castillo
+		colliders[0] = { 110.0f, 130.0f, 2.0f };  // arbol
+		colliders[1] = { 160.0f, 155.0f, 1.0f };  // barril
+		colliders[2] = { 150.0f, 140.0f, 2.0f };  // gato
+		colliders[3] = { 145.0f, 150.0f, 2.0f };  // tumba
+		colliders[4] = { 190.0f, 130.0f, 2.0f };  // tree2
+		colliders[5] = { 150.0f, 205.0f, 1.5f };  // ataud
+		colliders[6] = { 135.0f, 170.0f, 1.5f };  // calaca
+		colliders[7] = { 165.0f, 170.0f, 1.5f };  // calaca2
+		colliders[8] = { 45.0f, 45.0f, 1.0f };    // arbolmuerto1
+		colliders[9] = { 70.0f, 30.0f, 1.0f };    // arbolmuerto2
+		// Paredes del castillo (modelo 63 x 40 en el mundo, X 118-182, Z 230-270)
+		// Puerta en la pared sur, hueco de X 147 a 153
+		castleWalls[0] = { 118.0f, 182.0f, 268.0f, 270.0f }; // norte
+		castleWalls[1] = { 118.0f, 147.0f, 230.0f, 232.0f }; // sur izquierda
+		castleWalls[2] = { 153.0f, 182.0f, 230.0f, 232.0f }; // sur derecha
+		castleWalls[3] = { 118.0f, 120.0f, 230.0f, 270.0f }; // oeste
+		castleWalls[4] = { 180.0f, 182.0f, 230.0f, 270.0f }; // este
 		audio.Init(L"Sonidos/ambient.wav", audioVolume);
 		return true;
 	}
@@ -523,6 +560,48 @@ public:
 		if (camara->Position.x > 280.0f) camara->Position.x = 280.0f;
 		if (camara->Position.z < 25.0f) camara->Position.z = 25.0f;
 		if (camara->Position.z > 280.0f) camara->Position.z = 280.0f;
+
+		// Colisiones con objetos (circulos en XZ)
+		for (int i = 0; i < 10; i++)
+		{
+			float dx = camara->Position.x - colliders[i].x;
+			float dz = camara->Position.z - colliders[i].z;
+			float dist = sqrtf(dx * dx + dz * dz);
+			float minDist = colliders[i].radius + playerRadius;
+			if (dist < minDist && dist > 0.001f)
+			{
+				camara->Position.x = colliders[i].x + dx / dist * minDist;
+				camara->Position.z = colliders[i].z + dz / dist * minDist;
+			}
+		}
+
+		// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
+		for (int i = 0; i < 5; i++)
+		{
+			float minX = castleWalls[i].minX - playerRadius;
+			float maxX = castleWalls[i].maxX + playerRadius;
+			float minZ = castleWalls[i].minZ - playerRadius;
+			float maxZ = castleWalls[i].maxZ + playerRadius;
+			float px = camara->Position.x;
+			float pz = camara->Position.z;
+			if (px > minX && px < maxX && pz > minZ && pz < maxZ)
+			{
+				float pushLeft = px - minX;
+				float pushRight = maxX - px;
+				float pushDown = pz - minZ;
+				float pushUp = maxZ - pz;
+				float minPush = pushLeft;
+				int side = 0;
+				if (pushRight < minPush) { minPush = pushRight; side = 1; }
+				if (pushDown < minPush) { minPush = pushDown; side = 2; }
+				if (pushUp < minPush) { minPush = pushUp; side = 3; }
+				if (side == 0) camara->Position.x = minX;
+				if (side == 1) camara->Position.x = maxX;
+				if (side == 2) camara->Position.z = minZ;
+				if (side == 3) camara->Position.z = maxZ;
+			}
+		}
+
 		camara->Position.y = terreno->getTerrainCollision(camara->getXZ()) +3;
 	}
 
@@ -557,7 +636,35 @@ public:
 		Bitmap->DrawBitmap(camara);
 		d3d11DevCon->OMSetDepthStencilState(nullptr, 0);
 
-
+		// Debug de colisiones: mantener C presionada para verlas en rojo
+		if (showColliders)
+		{
+			for (int i = 0; i < 5; i++)
+			{
+				float cx = (castleWalls[i].minX + castleWalls[i].maxX) * 0.5f;
+				float cz = (castleWalls[i].minZ + castleWalls[i].maxZ) * 0.5f;
+				float w = castleWalls[i].maxX - castleWalls[i].minX;
+				float d = castleWalls[i].maxZ - castleWalls[i].minZ;
+				float y = terreno->getTerrainCollision(D3DXVECTOR2(cx, cz)) + 1.0f;
+				D3DXMATRIX s, t;
+				D3DXMatrixScaling(&s, w, 2.0f, d);
+				D3DXMatrixTranslation(&t, cx, y, cz);
+				debugBox->UpdateScene(s * t);
+				debugBox->DrawScene(camara);
+			}
+			for (int i = 0; i < 10; i++)
+			{
+				float cx = colliders[i].x;
+				float cz = colliders[i].z;
+				float r = colliders[i].radius + playerRadius;
+				float y = terreno->getTerrainCollision(D3DXVECTOR2(cx, cz)) + 1.0f;
+				D3DXMATRIX s, t;
+				D3DXMatrixScaling(&s, r * 2.0f, 2.0f, r * 2.0f);
+				D3DXMatrixTranslation(&t, cx, y, cz);
+				debugBox->UpdateScene(s * t);
+				debugBox->DrawScene(camara);
+			}
+		}
 
 		//Present the backbuffer to the screen
 		SwapChain->Present(1, 0);
