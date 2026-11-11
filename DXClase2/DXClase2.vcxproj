@@ -99,6 +99,7 @@
     <None Include="pixelShaderMultitextura.ps" />
     <None Include="vertexShader.vs" />
     <None Include="vertexShaderAgua.vs" />
+    <None Include="vertexShaderPasto.vs" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="pixelShaderNormalMap.ps" />

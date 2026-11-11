@@ -58,6 +58,9 @@
     <None Include="vertexShaderAgua.vs">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="vertexShaderPasto.vs">
+      <Filter>Resource Files</Filter>
+    </None>
     <None Include="pixelShaderCielo.ps">
       <Filter>Resource Files</Filter>
     </None>
