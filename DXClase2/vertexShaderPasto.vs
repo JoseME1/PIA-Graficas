@@ -18,6 +18,8 @@ struct VS_OUTPUT
 	float3 binormal : BINORMAL;
 	float4 vectPos : POSITION;
 	float maxHeight : HEIGHT;
+	float3 worldPos : WORLDPOS;
+	float fogDist : FOGDIST;
 };
 
 VS_OUTPUT VS(float4 inPos : POSITION, float4 inTextCoord : TEXTURE, float3 normal : NORMAL, float3 tangent : TANGENT, float3 binormal : BINORMAL)
@@ -44,6 +46,8 @@ VS_OUTPUT VS(float4 inPos : POSITION, float4 inTextCoord : TEXTURE, float3 norma
 	output.binormal = mul(binormal, World);
 	output.vectPos = inPos;
 	output.maxHeight = MaxH;
+	output.worldPos = worldPos.xyz;
+	output.fogDist = length(CameraPos.xyz - worldPos.xyz);
 
     return output;
 }

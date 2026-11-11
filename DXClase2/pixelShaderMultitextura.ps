@@ -61,7 +61,7 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 	finalColor += textureColor.rgb * light.diffuse.rgb * diff;
 	finalColor += light.specular.rgb * spec * 0.05f;
 
-	float fogDensity = 0.05f;
+	float fogDensity = 0.015f;
 float fogHeightFalloff = 0.08f;
 float fogBaseHeight = 3.0f;
 float heightFactor = exp(-max(input.worldPos.y - fogBaseHeight, 0.0f) * fogHeightFalloff);

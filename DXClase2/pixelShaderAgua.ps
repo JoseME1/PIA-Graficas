@@ -26,6 +26,8 @@ struct VS_OUTPUT
 	float3 viewDirection : COORDS;
 	float3 tangent : TANGENT;
 	float3 binormal : BINORMAL;
+    float4 vectPos : POSITION;
+    float maxHeight : HEIGHT;
     float3 worldPos : WORLDPOS;
 float fogDist : FOGDIST;
 
@@ -58,9 +60,9 @@ float4 PS( VS_OUTPUT input ) : SV_Target
     float3 finalColor = waterColor * light.ambient.rgb;
     finalColor += waterColor * light.diffuse.rgb * diff;
     finalColor += light.specular.rgb * spec * 0.3f;
-    float fogDensity = 0.04f;
+    float fogDensity = 0.015f;
 float fogHeightFalloff = 0.08f;
-float fogBaseHeight = 2.0f;
+float fogBaseHeight = 3.0f;
 float heightFactor = exp(-max(input.worldPos.y - fogBaseHeight, 0.0f) * fogHeightFalloff);
 float fogFactor = 1.0f - exp(-fogDensity * input.fogDist * heightFactor);
 fogFactor = saturate(fogFactor);
