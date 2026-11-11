@@ -51,7 +51,7 @@ private:
 	MPrimitives* arbolmuerto1;
 	MPrimitives* arbolmuerto2;
 	MPrimitives* debugBox;
-	MPrimitives* pasto[48];
+	MPrimitives* pasto[150];
 	bool showColliders = false;
 	D3DXVECTOR3 playerPos;
 	bool thirdPerson = false;
@@ -197,8 +197,8 @@ public:
 		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderCielo);
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
 		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
-		for (int i = 0; i < 48; i++)
-			pasto[i] = new MPrimitives(d3d11Device, d3d11DevCon, 3.0f, 4.0f, L"Texturas/pasto.png", ShaderPasto);
+		for (int i = 0; i < 150; i++)
+			pasto[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.5f, L"Texturas/pasto.png", ShaderPasto);
 
 		debugBox = new MPrimitives(d3d11Device, d3d11DevCon, 1.0f, L"Texturas/rojo.jpg", L"", ShaderDiffuse);
 
@@ -601,12 +601,12 @@ public:
 		terreno->UpdateScene(terrMat);
 
 		// Pasto con movimiento (48 manojos)
-		static float pastoXZ[48][2] = { {111.0f, 67.7f}, {192.7f, 48.1f}, {164.0f, 121.4f}, {44.5f, 156.9f}, {39.4f, 138.4f}, {47.5f, 52.7f}, {61.0f, 85.8f}, {186.9f, 266.9f}, {174.3f, 129.2f}, {274.1f, 41.6f}, {244.6f, 102.4f}, {66.1f, 59.4f}, {107.1f, 234.0f}, {75.2f, 175.4f}, {189.7f, 123.1f}, {166.9f, 45.7f}, {44.9f, 81.5f}, {200.1f, 136.9f}, {108.5f, 176.4f}, {143.3f, 104.9f}, {228.6f, 204.7f}, {91.0f, 173.6f}, {212.4f, 102.0f}, {275.0f, 59.5f}, {134.5f, 219.3f}, {68.0f, 152.2f}, {39.8f, 197.1f}, {221.1f, 173.3f}, {248.9f, 108.4f}, {203.8f, 178.6f}, {175.0f, 144.1f}, {240.0f, 266.2f}, {45.2f, 205.4f}, {191.8f, 278.3f}, {235.5f, 101.1f}, {126.4f, 197.2f}, {35.6f, 145.4f}, {44.7f, 222.1f}, {62.3f, 91.9f}, {50.1f, 142.3f}, {234.8f, 246.0f}, {99.6f, 133.8f}, {269.4f, 67.7f}, {74.1f, 88.0f}, {88.3f, 151.2f}, {177.3f, 95.7f}, {31.0f, 134.7f}, {122.3f, 171.6f} };
-		for (int i = 0; i < 48; i++)
+		static float pastoXZ[150][2] = { {67.1f, 200.9f}, {186.9f, 147.2f}, {80.1f, 227.1f}, {231.0f, 155.7f}, {25.8f, 119.6f}, {174.3f, 42.7f}, {227.4f, 84.2f}, {248.1f, 182.1f}, {151.9f, 54.5f}, {267.8f, 119.0f}, {64.5f, 233.5f}, {140.5f, 165.8f}, {112.4f, 148.6f}, {224.0f, 78.2f}, {173.1f, 211.1f}, {260.4f, 251.3f}, {129.4f, 118.1f}, {140.1f, 123.4f}, {151.5f, 150.3f}, {165.4f, 215.8f}, {166.9f, 183.8f}, {113.8f, 261.4f}, {41.7f, 232.5f}, {223.1f, 120.6f}, {199.3f, 197.4f}, {254.2f, 269.4f}, {128.8f, 277.2f}, {270.2f, 175.6f}, {250.2f, 150.2f}, {120.8f, 88.0f}, {222.3f, 148.2f}, {90.8f, 98.9f}, {132.0f, 68.5f}, {254.3f, 275.8f}, {215.2f, 147.1f}, {89.3f, 269.5f}, {159.0f, 210.8f}, {32.2f, 79.1f}, {238.8f, 227.8f}, {133.7f, 173.2f}, {241.6f, 103.5f}, {199.8f, 268.3f}, {189.2f, 242.2f}, {49.2f, 49.0f}, {60.9f, 246.2f}, {192.1f, 57.3f}, {27.0f, 143.3f}, {41.2f, 219.8f}, {69.7f, 206.4f}, {89.5f, 202.7f}, {124.2f, 103.9f}, {153.3f, 165.1f}, {178.3f, 154.6f}, {104.1f, 203.4f}, {159.1f, 168.0f}, {106.1f, 278.3f}, {52.4f, 44.4f}, {218.8f, 139.3f}, {189.4f, 137.9f}, {156.9f, 124.3f}, {127.4f, 82.5f}, {141.3f, 85.3f}, {123.3f, 149.1f}, {186.1f, 270.6f}, {150.4f, 207.9f}, {252.1f, 223.8f}, {184.8f, 218.4f}, {195.3f, 244.0f}, {235.3f, 270.7f}, {104.7f, 104.5f}, {124.8f, 62.1f}, {166.1f, 45.3f}, {102.2f, 265.6f}, {95.7f, 121.6f}, {264.9f, 144.1f}, {136.4f, 182.4f}, {123.1f, 94.5f}, {33.8f, 231.7f}, {263.4f, 204.7f}, {119.4f, 59.4f}, {229.6f, 240.1f}, {45.5f, 254.4f}, {232.9f, 179.7f}, {229.0f, 111.2f}, {93.8f, 115.0f}, {198.6f, 191.6f}, {262.4f, 162.3f}, {210.6f, 158.8f}, {114.8f, 160.8f}, {206.0f, 150.9f}, {66.3f, 242.0f}, {230.7f, 256.1f}, {223.3f, 255.2f}, {272.4f, 124.5f}, {265.2f, 263.9f}, {179.8f, 217.7f}, {250.1f, 117.4f}, {232.8f, 117.4f}, {31.7f, 194.7f}, {253.2f, 156.1f}, {133.2f, 188.4f}, {134.7f, 121.4f}, {149.8f, 92.7f}, {162.1f, 142.0f}, {212.8f, 211.4f}, {194.4f, 173.3f}, {152.5f, 142.7f}, {177.6f, 201.7f}, {241.2f, 252.1f}, {236.9f, 92.5f}, {80.6f, 200.0f}, {118.9f, 74.3f}, {61.0f, 39.7f}, {202.6f, 130.5f}, {56.4f, 249.5f}, {209.8f, 176.6f}, {138.2f, 152.7f}, {187.2f, 187.1f}, {118.3f, 113.3f}, {217.5f, 187.1f}, {30.1f, 189.0f}, {174.6f, 173.7f}, {108.4f, 108.7f}, {128.3f, 219.0f}, {76.8f, 203.4f}, {157.7f, 194.2f}, {27.3f, 102.2f}, {116.2f, 225.1f}, {271.0f, 222.9f}, {133.4f, 201.2f}, {166.9f, 117.8f}, {102.6f, 109.2f}, {72.6f, 257.9f}, {133.5f, 76.1f}, {246.5f, 110.9f}, {201.4f, 147.4f}, {108.8f, 252.3f}, {198.2f, 221.9f}, {121.9f, 274.0f}, {93.1f, 227.5f}, {226.4f, 247.4f}, {252.9f, 235.0f}, {274.5f, 152.3f}, {203.9f, 156.0f}, {272.2f, 192.0f}, {134.8f, 194.3f}, {140.9f, 219.7f}, {124.9f, 210.8f}, {186.2f, 233.7f}, {25.9f, 111.8f} };
+		for (int i = 0; i < 150; i++)
 		{
 			D3DXMATRIX lugarPasto;
 			D3DXVECTOR2 xzPasto(pastoXZ[i][0], pastoXZ[i][1]);
-			float yPasto = terreno->getTerrainCollision(xzPasto) + 1.5f;
+			float yPasto = terreno->getTerrainCollision(xzPasto) + 1.0f;
 			D3DXMatrixTranslation(&lugarPasto, xzPasto.x, yPasto, xzPasto.y);
 			pasto[i]->UpdateScene(lugarPasto);
 		}
@@ -692,7 +692,7 @@ public:
 		castillo->DrawScene(camara);
 		arbolmuerto1->DrawScene(camara);
 		arbolmuerto2->DrawScene(camara);
-		for (int i = 0; i < 48; i++)
+		for (int i = 0; i < 150; i++)
 			pasto[i]->DrawScene(camara);
 		agua->DrawScene(camara);
 
