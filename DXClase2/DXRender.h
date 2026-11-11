@@ -426,7 +426,7 @@ public:
 		castleWalls[17] = { 128.4f, 143.2f, 263.0f, 265.0f }; // Z +7 oeste
 		castleWalls[18] = { 156.6f, 171.4f, 263.0f, 265.0f }; // Z +7 este
 		// Escalera central (local X -1 a +1, Z -1.5 a 2.5, sube hacia el norte)
-		castleWalls[19] = { 147.0f, 153.0f, 246.0f, 256.0f }; // escalera
+		castleWalls[19] = { 148.0f, 152.0f, 247.0f, 255.0f }; // escalera
 		audio.Init(L"Sonidos/ambient.wav", audioVolume);
 		return true;
 	}
