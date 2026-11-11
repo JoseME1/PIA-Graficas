@@ -52,7 +52,7 @@ private:
 	Camara *camara;
 	Camara *skyCamara;
 	AudioManager audio;
-	float audioVolume = 0.3f;
+	float audioVolume = 0.2f;
 
 
 	float rotPerFrame;

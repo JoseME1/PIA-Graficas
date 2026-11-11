@@ -40,10 +40,14 @@ private:
 
             if (strncmp(id, "fmt ", 4) == 0)
             {
-                file.read((char*)&wfx, sizeof(WAVEFORMATEX));
-                if (size > sizeof(WAVEFORMATEX))
-                    file.seekg(size - sizeof(WAVEFORMATEX), std::ios::cur);
+                ZeroMemory(&wfx, sizeof(wfx));
+                DWORD toRead = size < sizeof(WAVEFORMATEX) ? size : sizeof(WAVEFORMATEX);
+                file.read((char*)&wfx, toRead);
+                wfx.cbSize = 0;
+                if (size > toRead)
+                    file.seekg(size - toRead, std::ios::cur);
             }
+
             else if (strncmp(id, "data", 4) == 0)
             {
                 pAudioData = new BYTE[size];
