@@ -574,8 +574,8 @@ public:
 
 						if (qteProgreso >= 4)
 						{
-							// Acierto completo: +20% de resistencia
-							resistenciaActual += 0.20f;
+							// Acierto completo: +25% de resistencia
+							resistenciaActual += 0.25f;
 							if (resistenciaActual > 1.0f)
 								resistenciaActual = 1.0f;
 							qteActivo = false;
