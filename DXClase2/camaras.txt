@@ -5,6 +5,7 @@
 # Generado dentro del juego con F3 + P. Editable a mano.
 seguir = 1
 velocidad_vuelo = 20.00
+suavizado = 5.00
 180.13, 10.09, 122.44, -393.85, 10.94
 230.01, 10.09, 234.46, -496.98, 13.81
 218.43, 16.51, 291.43, -131.38, 25.21

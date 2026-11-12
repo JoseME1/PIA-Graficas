@@ -104,6 +104,15 @@ private:
 	float cuentaRegresiva = 0.0f;
 	float velocidadCarrera = 12.0f;
 
+	// Estadisticas de la calaca:
+	//   velocidad   = velocidad maxima a la que puede llegar
+	//   aceleracion = segundos que tarda en llegar a esa velocidad maxima
+	//   resistencia = segundos que aguanta corriendo a la velocidad maxima
+	float aceleracionCarrera = 2.0f;
+	float resistenciaCarrera = 15.0f;
+	float velocidadActual = 0.0f;		// velocidad en este instante (unidades/s)
+	float resistenciaActual = 1.0f;		// 1 = llena, 0 = agotada
+
 	// Modo de captura de ruta
 	bool modoRuta = false;
 	bool f2Last = false, pLast = false, backLast = false, eLast = false;
@@ -123,6 +132,9 @@ private:
 	bool vistasSeguir = true;			// la camara mira siempre a la calaca
 	float velocidadVuelo = 20.0f;		// velocidad de la camara libre (unidades/s)
 	float yawCalaca = 0.0f;				// hacia donde corre la calaca en la carrera automatica
+	float suavizadoCamara = 5.0f;		// que tan rapido gira la camara hacia la calaca
+	int vistaActual = -1;				// vista que se esta usando (para no interpolar al cambiar de camara)
+	bool vistaCarreraActiva = false;	// true si la camara la manda una vista de la carrera
 
 	// Marcadores del circuito dibujados en el mundo
 	MPrimitives* marcadorMeta = nullptr;	// anillo dorado en la meta
@@ -134,6 +146,13 @@ private:
 	MPrimitives* hudFlecha = nullptr;
 	std::vector<unsigned char> flechaPixeles;
 	float gradosFlecha = 999.0f;
+
+	// Panel de estadisticas (esquina inferior derecha)
+	MPrimitives* hudPanel = nullptr;
+	std::vector<unsigned char> panelPixeles;
+	std::wstring panelClave;
+	int panelAncho = 480;
+	int panelAlto = 160;
 	float hudY = 0.62f;						// posicion vertical del mensaje (0 = arriba, 1 = abajo)
 	float tamFlecha = 110.0f;				// lado de la flecha en pixeles
 
@@ -505,6 +524,9 @@ public:
 				siguientePunto = 1;
 				thirdPerson = true;		// la carrera se ve desde atras de la calaca
 				yawCalaca = camara->Yaw;
+				vistaActual = -1;
+				velocidadActual = 0.0f;		// arranca parada y acelera
+				resistenciaActual = 1.0f;	// resistencia llena
 			}
 		}
 		eLast = eDown;
@@ -536,11 +558,8 @@ public:
 				while (diferencia > D3DX_PI) diferencia -= 2.0f * D3DX_PI;
 				while (diferencia < -D3DX_PI) diferencia += 2.0f * D3DX_PI;
 
-				float maxGiro = 2.5f * deltaTime;
-				if (diferencia > maxGiro) diferencia = maxGiro;
-				if (diferencia < -maxGiro) diferencia = -maxGiro;
-
-				camYaw = diferencia;
+				// Giro suave (interpolacion exponencial), no a velocidad constante
+				camYaw = diferencia * (1.0f - expf(-3.0f * deltaTime));
 			}
 		}
 
@@ -558,6 +577,11 @@ public:
 				camara->Position.y += vertical;
 				camara->UpdateCamera(0, 0, 0, 0);	// recalcula View con la nueva altura
 			}
+		}
+		else if (vistaCarreraActiva)
+		{
+			// La camara y la calaca las controla la carrera: aqui no se tocan,
+			// si no la rotacion hacia el checkpoint pelea con la vista guardada.
 		}
 		else if (thirdPerson)
 		{
@@ -600,6 +624,8 @@ public:
 		hudY = 0.62f;
 		alturaMarcador = 0.35f;
 		velocidadCarrera = 12.0f;
+		aceleracionCarrera = 2.0f;
+		resistenciaCarrera = 15.0f;
 
 		FILE* archivo = NULL;
 		if (fopen_s(&archivo, "ruta.txt", "r") != 0 || archivo == NULL)
@@ -624,6 +650,10 @@ public:
 				sscanf_s(linea, "altura_marcador = %f", &alturaMarcador);
 			else if (strncmp(linea, "velocidad", 9) == 0)
 				sscanf_s(linea, "velocidad = %f", &velocidadCarrera);
+			else if (strncmp(linea, "aceleracion", 11) == 0)
+				sscanf_s(linea, "aceleracion = %f", &aceleracionCarrera);
+			else if (strncmp(linea, "resistencia", 11) == 0)
+				sscanf_s(linea, "resistencia = %f", &resistenciaCarrera);
 			else if (sscanf_s(linea, "%f , %f", &x, &z) == 2)
 				puntosRuta.push_back(D3DXVECTOR2(x, z));
 		}
@@ -632,6 +662,8 @@ public:
 		siguientePunto = 1;
 		autoCorriendo = false;			// si se recarga a mitad de carrera, se corta la carrera automatica
 		cuentaRegresiva = 0.0f;
+		velocidadActual = 0.0f;
+		resistenciaActual = 1.0f;
 		estadoCarrera = (puntosRuta.size() >= 2) ? CarreraEsperando : CarreraSinRuta;
 	}
 
@@ -642,9 +674,11 @@ public:
 	void CargarVistas()
 	{
 		vistasCamara.clear();
+		vistaActual = -1;
 
 		vistasSeguir = true;
 		velocidadVuelo = 20.0f;
+		suavizadoCamara = 5.0f;
 
 		FILE* archivo = NULL;
 		if (fopen_s(&archivo, "camaras.txt", "r") != 0 || archivo == NULL)
@@ -663,6 +697,8 @@ public:
 			}
 			else if (strncmp(linea, "velocidad_vuelo", 15) == 0)
 				sscanf_s(linea, "velocidad_vuelo = %f", &velocidadVuelo);
+			else if (strncmp(linea, "suavizado", 9) == 0)
+				sscanf_s(linea, "suavizado = %f", &suavizadoCamara);
 			else if (sscanf_s(linea, "%f , %f , %f , %f , %f", &x, &y, &z, &yaw, &pitch) == 5)
 			{
 				VistaCamara vista;
@@ -688,6 +724,7 @@ public:
 		fprintf(archivo, "# Generado dentro del juego con F3 + P. Editable a mano.\n");
 		fprintf(archivo, "seguir = %d\n", vistasSeguir ? 1 : 0);
 		fprintf(archivo, "velocidad_vuelo = %.2f\n", velocidadVuelo);
+		fprintf(archivo, "suavizado = %.2f\n", suavizadoCamara);
 		for (size_t i = 0; i < vistasCamara.size(); i++)
 		{
 			fprintf(archivo, "%.2f, %.2f, %.2f, %.2f, %.2f\n",
@@ -710,9 +747,29 @@ public:
 		fprintf(archivo, "hud_y = %.2f\n", hudY);
 		fprintf(archivo, "altura_marcador = %.2f\n", alturaMarcador);
 		fprintf(archivo, "velocidad = %.2f\n", velocidadCarrera);
+		fprintf(archivo, "aceleracion = %.2f\n", aceleracionCarrera);
+		fprintf(archivo, "resistencia = %.2f\n", resistenciaCarrera);
 		for (size_t i = 0; i < puntosRuta.size(); i++)
 			fprintf(archivo, "%.2f, %.2f\n", puntosRuta[i].x, puntosRuta[i].y);
 		fclose(archivo);
+	}
+
+	// Penalizacion por resistencia agotada:
+	//   50% -> velocidad y aceleracion -10%
+	//   25% -> -20%     0% -> -30%
+	float PenalizacionResistencia()
+	{
+		if (resistenciaActual <= 0.001f) return 0.30f;
+		if (resistenciaActual <= 0.25f) return 0.20f;
+		if (resistenciaActual <= 0.50f) return 0.10f;
+		return 0.0f;
+	}
+
+	// Segundos que tarda la calaca en llegar a su velocidad maxima (con la
+	// penalizacion de resistencia ya aplicada)
+	float TiempoAceleracion()
+	{
+		return aceleracionCarrera * (1.0f + PenalizacionResistencia());
 	}
 
 	void ActualizarCarrera()
@@ -763,8 +820,37 @@ public:
 			// La calaca avanza sola hacia el siguiente punto
 			if (autoCorriendo && distancia > 0.001f)
 			{
-				float paso = velocidadCarrera * deltaTime;
+				// Estadisticas: con la resistencia baja, la velocidad maxima y la
+				// aceleracion se reducen, asi que cuesta mas llegar a la meta.
+				float penalizacion = PenalizacionResistencia();
+				float velocidadObjetivo = velocidadCarrera * (1.0f - penalizacion);
+
+				float tiempoAceleracion = TiempoAceleracion();
+				if (tiempoAceleracion < 0.01f) tiempoAceleracion = 0.01f;
+				float tasaAceleracion = velocidadObjetivo / tiempoAceleracion;
+
+				if (velocidadActual < velocidadObjetivo)
+				{
+					velocidadActual += tasaAceleracion * deltaTime;
+					if (velocidadActual > velocidadObjetivo) velocidadActual = velocidadObjetivo;
+				}
+				else
+				{
+					velocidadActual -= tasaAceleracion * deltaTime;
+					if (velocidadActual < velocidadObjetivo) velocidadActual = velocidadObjetivo;
+				}
+
+				float paso = velocidadActual * deltaTime;
 				if (paso > distancia) paso = distancia;
+
+				// La resistencia baja cada metro: a velocidad maxima dura
+				// 'resistenciaCarrera' segundos.
+				float metrosDeResistencia = resistenciaCarrera * velocidadCarrera;
+				if (metrosDeResistencia > 0.001f)
+				{
+					resistenciaActual -= paso / metrosDeResistencia;
+					if (resistenciaActual < 0.0f) resistenciaActual = 0.0f;
+				}
 
 				playerPos.x += dx / distancia * paso;
 				playerPos.z += dz / distancia * paso;
@@ -850,7 +936,10 @@ public:
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 
 		if (estadoCarrera == CarreraCorriendo && !modoRuta)
+		{
 			DibujarFlechaHUD();
+			DibujarPanelEstadisticas();
+		}
 	}
 
 	// Pinta un objeto con un color plano (textura 2x2 generada en CPU).
@@ -934,6 +1023,41 @@ public:
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
 
+	// Panel de estadisticas en la esquina inferior derecha: velocidad actual
+	// contra la maxima, aceleracion (llena mientras acelera) y resistencia.
+	void DibujarPanelEstadisticas()
+	{
+		float penalizacion = PenalizacionResistencia();
+		int porcentaje = (int)(penalizacion * 100.0f + 0.5f);
+		float velocidadObjetivo = velocidadCarrera * (1.0f - penalizacion);
+		bool acelerando = (velocidadActual < velocidadObjetivo - 0.01f);
+
+		// La textura solo se regenera cuando cambia algun valor visible
+		wchar_t clave[128];
+		swprintf_s(clave, L"%.1f|%.1f|%.0f|%d|%d",
+			velocidadActual, TiempoAceleracion(), resistenciaActual * 100.0f,
+			porcentaje, acelerando ? 1 : 0);
+
+		if (panelClave != clave)
+		{
+			GenerarPanelBGRA(panelAncho, panelAlto,
+				velocidadActual, velocidadCarrera,
+				TiempoAceleracion(), acelerando ? 1.0f : 0.0f,
+				resistenciaActual, porcentaje, panelPixeles);
+			hudPanel->SetTextureFromPixels((UINT)panelAncho, (UINT)panelAlto, panelPixeles.data());
+			panelClave = clave;
+		}
+
+		float x = hudScreenW - panelAncho - 24.0f;
+		float y = hudScreenH - panelAlto - 24.0f;
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+		hudPanel->DrawHUD(x, y, (float)panelAncho, (float)panelAlto, hudScreenW, hudScreenH);
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+	}
+
 	bool InitScene(int Width, int Height)
 	{
 		//Create the Viewport
@@ -992,6 +1116,7 @@ public:
 		marcadorSig = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorPunto = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		hudFlecha = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudPanel = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 
 		ColorPlano(marcadorMeta, 255, 200, 60);		// dorado
 		ColorPlano(marcadorSig, 80, 255, 120);		// verde
@@ -1060,20 +1185,35 @@ public:
 
 		if (vistasSeguir)
 		{
-			// Apunta a la calaca para que la vista siga la carrera
-			D3DXVECTOR3 objetivo = D3DXVECTOR3(playerPos.x, playerPos.y + 2.0f, playerPos.z);
-			D3DXVECTOR3 direccion = objetivo - camara->Position;
-			float largo = D3DXVec3Length(&direccion);
+			// Solo se sigue el movimiento horizontal: la altura del terreno y el
+			// rebote de la calaca no mueven el encuadre, asi la camara no tiembla.
+			float dx = playerPos.x - camara->Position.x;
+			float dz = playerPos.z - camara->Position.z;
 
-			if (largo > 0.01f)
+			if (dx * dx + dz * dz > 0.01f)
 			{
-				float seno = direccion.y / largo;
-				if (seno > 1.0f) seno = 1.0f;
-				if (seno < -1.0f) seno = -1.0f;
+				float yawObjetivo = atan2f(dx, dz);
 
-				camara->Yaw = atan2f(direccion.x, direccion.z);
-				camara->Pitch = -asinf(seno);
+				if (indice != vistaActual)
+				{
+					// Camara nueva: se encuadra de golpe (corte limpio, sin giro raro)
+					camara->Yaw = yawObjetivo;
+				}
+				else
+				{
+					// Interpolacion exponencial: giro suave e independiente de los FPS
+					float diferencia = yawObjetivo - camara->Yaw;
+
+					while (diferencia > D3DX_PI) diferencia -= 2.0f * D3DX_PI;
+					while (diferencia < -D3DX_PI) diferencia += 2.0f * D3DX_PI;
+
+					float factor = 1.0f - expf(-suavizadoCamara * deltaTime);
+					camara->Yaw += diferencia * factor;
+				}
 			}
+
+			// El encuadre vertical es el que el jugador dejo con P
+			camara->Pitch = vistasCamara[indice].pitch;
 		}
 		else
 		{
@@ -1081,6 +1221,7 @@ public:
 			camara->Pitch = vistasCamara[indice].pitch;
 		}
 
+		vistaActual = indice;
 		camara->UpdateCamera(0.0f, 0.0f, 0.0f, 0.0f);
 		return true;
 	}
@@ -1306,18 +1447,24 @@ public:
 		if (modoCamara)
 		{
 			// La camara la controla el jugador en el editor de vistas
+			vistaCarreraActiva = false;
 		}
-		else if (!AplicarVistaCarrera())
+		else
 		{
-			if (thirdPerson)
+			vistaCarreraActiva = AplicarVistaCarrera();
+
+			if (!vistaCarreraActiva)
 			{
-				camara->Position = playerPos - camara->Forward * 8.0f + D3DXVECTOR3(0.0f, 4.0f, 0.0f);
-			}
-			else
-			{
-				camara->Position.x = playerPos.x;
-				camara->Position.z = playerPos.z;
-				camara->Position.y = playerPos.y + 3.0f;
+				if (thirdPerson)
+				{
+					camara->Position = playerPos - camara->Forward * 8.0f + D3DXVECTOR3(0.0f, 4.0f, 0.0f);
+				}
+				else
+				{
+					camara->Position.x = playerPos.x;
+					camara->Position.z = playerPos.z;
+					camara->Position.y = playerPos.y + 3.0f;
+				}
 			}
 		}
 	}

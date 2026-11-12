@@ -5,6 +5,8 @@ radio_punto = 9.00
 hud_y = 0.62
 altura_marcador = 0.35
 velocidad = 12.00
+aceleracion = 2.00
+resistencia = 15.00
 127.41, 151.56
 204.25, 185.07
 199.52, 257.21
