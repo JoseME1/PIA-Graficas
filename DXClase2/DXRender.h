@@ -3,6 +3,8 @@
 
 #include "Constants.h"
 #include <chrono>
+#include <cstdlib>
+#include <ctime>
 #include "Camara.h"
 #include "Light.h"
 #include "MeshPrimitives.h"
@@ -153,6 +155,29 @@ private:
 	std::wstring panelClave;
 	int panelAncho = 480;
 	int panelAlto = 160;
+
+	// Aros de resistencia (quick time event): se colocan con F2 + R y se
+	// guardan en ruta.txt como "aro = x, z" despues de los checkpoints.
+	std::vector<D3DXVECTOR2> arosResistencia;
+	std::vector<bool> arosUsados;			// un aro solo se puede usar una vez por carrera
+	float radioAro = 6.0f;					// distancia horizontal para activar el aro
+	MPrimitives* marcadorAro = nullptr;		// aro disponible (magenta)
+	MPrimitives* marcadorAroUsado = nullptr;	// aro ya usado (gris)
+
+	// Quick time event del aro: 4 flechas aleatorias en 3 segundos.
+	// 0 = arriba, 1 = derecha, 2 = abajo, 3 = izquierda
+	bool qteActivo = false;
+	int qteSecuencia[4] = { 0, 0, 0, 0 };
+	int qteProgreso = 0;					// flechas acertadas en orden
+	float qteTiempo = 0.0f;					// segundos restantes
+	bool qteLast[4] = { false, false, false, false };
+	MPrimitives* hudQte[4] = { nullptr, nullptr, nullptr, nullptr };
+	std::vector<unsigned char> qtePixeles[4];
+	int qteSlotDir[4] = { -1, -1, -1, -1 };	// direccion dibujada en cada slot
+	bool qteSlotVerde[4] = { false, false, false, false };
+	MPrimitives* hudQteBarra = nullptr;		// relleno del contrarreloj
+	MPrimitives* hudQteBarraFondo = nullptr;	// pista oscura del contrarreloj
+	bool rLast = false, delLast = false;
 	float hudY = 0.62f;						// posicion vertical del mensaje (0 = arriba, 1 = abajo)
 	float tamFlecha = 110.0f;				// lado de la flecha en pixeles
 
@@ -503,12 +528,67 @@ public:
 			}
 			backLast = backDown;
 
+			// R agrega un aro de resistencia en la posicion actual
+			bool rDown = (keyboardState[DIK_R] != 0);
+			if (rDown && !rLast)
+			{
+				arosResistencia.push_back(D3DXVECTOR2(playerPos.x, playerPos.z));
+				arosUsados.push_back(false);
+				GuardarRuta();
+			}
+			rLast = rDown;
+
+			// Supr borra el ultimo aro
+			bool delDown = (keyboardState[DIK_DELETE] != 0);
+			if (delDown && !delLast && !arosResistencia.empty())
+			{
+				arosResistencia.pop_back();
+				if (!arosUsados.empty())
+					arosUsados.pop_back();
+				GuardarRuta();
+			}
+			delLast = delDown;
+
 			wchar_t buffer[320];
 			swprintf_s(buffer,
 				L"Modo ruta: %d puntos    [P] agregar    [Retroceso] borrar    [F2] salir\n"
-				L"Posicion:  X %.1f   Z %.1f",
-				(int)puntosRuta.size(), playerPos.x, playerPos.z);
+				L"Aros: %d    [R] agregar    [Supr] borrar    Posicion:  X %.1f   Z %.1f",
+				(int)puntosRuta.size(), (int)arosResistencia.size(), playerPos.x, playerPos.z);
 			hudTexto = buffer;
+		}
+
+		// Quick time event del aro: hay que pulsar las 4 flechas en orden.
+		// Una tecla equivocada cancela el QTE; si se acaba el tiempo, tambien.
+		{
+			const int teclasQte[4] = { DIK_UP, DIK_RIGHT, DIK_DOWN, DIK_LEFT };
+
+			for (int i = 0; i < 4; i++)
+			{
+				bool down = (keyboardState[teclasQte[i]] != 0);
+
+				if (qteActivo && down && !qteLast[i])
+				{
+					if (i == qteSecuencia[qteProgreso])
+					{
+						qteProgreso++;
+
+						if (qteProgreso >= 4)
+						{
+							// Acierto completo: +20% de resistencia
+							resistenciaActual += 0.20f;
+							if (resistenciaActual > 1.0f)
+								resistenciaActual = 1.0f;
+							qteActivo = false;
+						}
+					}
+					else
+					{
+						qteActivo = false;	// tecla equivocada: no se gana nada
+					}
+				}
+
+				qteLast[i] = down;
+			}
 		}
 
 		// Arrancar la carrera con E junto a la meta: cuenta regresiva y luego corre sola
@@ -527,6 +607,8 @@ public:
 				vistaActual = -1;
 				velocidadActual = 0.0f;		// arranca parada y acelera
 				resistenciaActual = 1.0f;	// resistencia llena
+				qteActivo = false;
+				arosUsados.assign(arosResistencia.size(), false);	// aros disponibles otra vez
 			}
 		}
 		eLast = eDown;
@@ -618,9 +700,13 @@ public:
 	void CargarRuta()
 	{
 		puntosRuta.clear();
+		arosResistencia.clear();
+		arosUsados.clear();
+		qteActivo = false;
 
 		radioMeta = 9.0f;
 		radioPunto = 9.0f;
+		radioAro = 6.0f;
 		hudY = 0.62f;
 		alturaMarcador = 0.35f;
 		velocidadCarrera = 12.0f;
@@ -644,6 +730,8 @@ public:
 				sscanf_s(linea, "radio_meta = %f", &radioMeta);
 			else if (strncmp(linea, "radio_punto", 11) == 0)
 				sscanf_s(linea, "radio_punto = %f", &radioPunto);
+			else if (strncmp(linea, "radio_aro", 9) == 0)
+				sscanf_s(linea, "radio_aro = %f", &radioAro);
 			else if (strncmp(linea, "hud_y", 5) == 0)
 				sscanf_s(linea, "hud_y = %f", &hudY);
 			else if (strncmp(linea, "altura_marcador", 15) == 0)
@@ -654,11 +742,17 @@ public:
 				sscanf_s(linea, "aceleracion = %f", &aceleracionCarrera);
 			else if (strncmp(linea, "resistencia", 11) == 0)
 				sscanf_s(linea, "resistencia = %f", &resistenciaCarrera);
+			else if (strncmp(linea, "aro", 3) == 0)
+			{
+				if (sscanf_s(linea, "aro = %f , %f", &x, &z) == 2)
+					arosResistencia.push_back(D3DXVECTOR2(x, z));
+			}
 			else if (sscanf_s(linea, "%f , %f", &x, &z) == 2)
 				puntosRuta.push_back(D3DXVECTOR2(x, z));
 		}
 		fclose(archivo);
 
+		arosUsados.assign(arosResistencia.size(), false);
 		siguientePunto = 1;
 		autoCorriendo = false;			// si se recarga a mitad de carrera, se corta la carrera automatica
 		cuentaRegresiva = 0.0f;
@@ -744,6 +838,7 @@ public:
 		fprintf(archivo, "# Generado dentro del juego con F2 + P. Los valores de abajo se pueden editar a mano.\n");
 		fprintf(archivo, "radio_meta = %.2f\n", radioMeta);
 		fprintf(archivo, "radio_punto = %.2f\n", radioPunto);
+		fprintf(archivo, "radio_aro = %.2f\n", radioAro);
 		fprintf(archivo, "hud_y = %.2f\n", hudY);
 		fprintf(archivo, "altura_marcador = %.2f\n", alturaMarcador);
 		fprintf(archivo, "velocidad = %.2f\n", velocidadCarrera);
@@ -751,6 +846,8 @@ public:
 		fprintf(archivo, "resistencia = %.2f\n", resistenciaCarrera);
 		for (size_t i = 0; i < puntosRuta.size(); i++)
 			fprintf(archivo, "%.2f, %.2f\n", puntosRuta[i].x, puntosRuta[i].y);
+		for (size_t i = 0; i < arosResistencia.size(); i++)
+			fprintf(archivo, "aro = %.2f, %.2f\n", arosResistencia[i].x, arosResistencia[i].y);
 		fclose(archivo);
 	}
 
@@ -770,6 +867,22 @@ public:
 	float TiempoAceleracion()
 	{
 		return aceleracionCarrera * (1.0f + PenalizacionResistencia());
+	}
+
+	// Lanza el quick time event de un aro: 4 flechas al azar (se pueden repetir)
+	// y 3 segundos para pulsarlas en orden.
+	void IniciarQTE()
+	{
+		for (int i = 0; i < 4; i++)
+		{
+			qteSecuencia[i] = rand() % 4;
+			qteSlotDir[i] = -1;			// fuerza a redibujar las flechas
+			qteSlotVerde[i] = false;
+		}
+
+		qteProgreso = 0;
+		qteTiempo = 3.0f;
+		qteActivo = true;
 	}
 
 	void ActualizarCarrera()
@@ -863,6 +976,38 @@ public:
 				distancia = sqrtf(dx * dx + dz * dz);
 			}
 
+			// Aros de resistencia: al pasar sobre uno disponible se lanza el QTE.
+			// Cada aro solo se usa una vez por carrera.
+			if (!qteActivo)
+			{
+				for (size_t i = 0; i < arosResistencia.size(); i++)
+				{
+					if (i < arosUsados.size() && arosUsados[i])
+						continue;
+
+					float ax = arosResistencia[i].x - playerPos.x;
+					float az = arosResistencia[i].y - playerPos.z;
+
+					if (ax * ax + az * az <= radioAro * radioAro)
+					{
+						arosUsados[i] = true;
+						IniciarQTE();
+						break;
+					}
+				}
+			}
+
+			// Contrarreloj del QTE: si se agota, no se gana ni se pierde nada
+			if (qteActivo)
+			{
+				qteTiempo -= deltaTime;
+				if (qteTiempo <= 0.0f)
+				{
+					qteTiempo = 0.0f;
+					qteActivo = false;
+				}
+			}
+
 			if (distancia <= radioPunto)
 			{
 				siguientePunto++;
@@ -872,6 +1017,7 @@ public:
 					// Fin de la carrera: se devuelve el control al jugador
 					estadoCarrera = CarreraTerminada;
 					autoCorriendo = false;
+					qteActivo = false;
 					tiempoMensaje = 6.0f;
 					hudTexto = L"Carrera terminada!";
 					return;
@@ -904,42 +1050,96 @@ public:
 
 	void DibujarHUD()
 	{
-		if (hudTexto.empty())
+		if (!hudTexto.empty())
+		{
+			// La cuenta regresiva se dibuja con fuente grande y centrada en pantalla
+			bool grande = (estadoCarrera == CarreraCuenta);
+			int ancho = grande ? 640 : hudAncho;
+			int alto = grande ? 360 : hudAlto;
+			int fuente = grande ? 240 : hudFuente;
+
+			if (hudTexto != hudTextoDibujado || ancho != hudAnchoDibujado || alto != hudAltoDibujado)
+			{
+				GenerarTextoBGRA(hudTexto.c_str(), ancho, alto, fuente, 255, 255, 255, hudPixeles);
+				hudQuad->SetTextureFromPixels((UINT)ancho, (UINT)alto, hudPixeles.data());
+				hudTextoDibujado = hudTexto;
+				hudAnchoDibujado = ancho;
+				hudAltoDibujado = alto;
+			}
+
+			d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+			d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+			float x = (hudScreenW - ancho) * 0.5f;
+			float y = grande ? (hudScreenH - alto) * 0.35f : hudScreenH * hudY;
+			hudQuad->DrawHUD(x, y, (float)ancho, (float)alto, hudScreenW, hudScreenH);
+
+			d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+			d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+		}
+		else
 		{
 			hudTextoDibujado.clear();
-			return;
 		}
-
-		// La cuenta regresiva se dibuja con fuente grande y centrada en pantalla
-		bool grande = (estadoCarrera == CarreraCuenta);
-		int ancho = grande ? 640 : hudAncho;
-		int alto = grande ? 360 : hudAlto;
-		int fuente = grande ? 240 : hudFuente;
-
-		if (hudTexto != hudTextoDibujado || ancho != hudAnchoDibujado || alto != hudAltoDibujado)
-		{
-			GenerarTextoBGRA(hudTexto.c_str(), ancho, alto, fuente, 255, 255, 255, hudPixeles);
-			hudQuad->SetTextureFromPixels((UINT)ancho, (UINT)alto, hudPixeles.data());
-			hudTextoDibujado = hudTexto;
-			hudAnchoDibujado = ancho;
-			hudAltoDibujado = alto;
-		}
-
-		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
-		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
-
-		float x = (hudScreenW - ancho) * 0.5f;
-		float y = grande ? (hudScreenH - alto) * 0.35f : hudScreenH * hudY;
-		hudQuad->DrawHUD(x, y, (float)ancho, (float)alto, hudScreenW, hudScreenH);
-
-		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
-		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 
 		if (estadoCarrera == CarreraCorriendo && !modoRuta)
 		{
 			DibujarFlechaHUD();
 			DibujarPanelEstadisticas();
+			DibujarQTE();
 		}
+	}
+
+	// Quick time event del aro: las 4 flechas de la secuencia arriba al centro y
+	// una barra que se encoge con el contrarreloj de 3 segundos.
+	void DibujarQTE()
+	{
+		if (!qteActivo)
+			return;
+
+		const float lado = 96.0f;
+		const float separacion = 20.0f;
+		float total = lado * 4.0f + separacion * 3.0f;
+		float x0 = (hudScreenW - total) * 0.5f;
+		float y = hudScreenH * 0.16f;
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		for (int i = 0; i < 4; i++)
+		{
+			int dir = qteSecuencia[i];
+			bool acertada = (i < qteProgreso);
+
+			// La textura de cada flecha solo se regenera si cambia de direccion o de color
+			if (qteSlotDir[i] != dir || qteSlotVerde[i] != acertada)
+			{
+				if (acertada)
+					GenerarFlechaBGRA(128, dir * 90.0f, 80, 230, 110, qtePixeles[i]);
+				else
+					GenerarFlechaBGRA(128, dir * 90.0f, 255, 255, 255, qtePixeles[i]);
+
+				hudQte[i]->SetTextureFromPixels(128, 128, qtePixeles[i].data());
+				qteSlotDir[i] = dir;
+				qteSlotVerde[i] = acertada;
+			}
+
+			hudQte[i]->DrawHUD(x0 + i * (lado + separacion), y, lado, lado, hudScreenW, hudScreenH);
+		}
+
+		// Contrarreloj: pista oscura y relleno que se encoge
+		float barraAlto = 14.0f;
+		float barraY = y + lado + 16.0f;
+		float fraccion = qteTiempo / 3.0f;
+		if (fraccion < 0.0f) fraccion = 0.0f;
+		if (fraccion > 1.0f) fraccion = 1.0f;
+
+		hudQteBarraFondo->DrawHUD(x0, barraY, total, barraAlto, hudScreenW, hudScreenH);
+		if (fraccion > 0.001f)
+			hudQteBarra->DrawHUD(x0, barraY, total * fraccion, barraAlto, hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
 
 	// Pinta un objeto con un color plano (textura 2x2 generada en CPU).
@@ -984,6 +1184,27 @@ public:
 			D3DXMatrixScaling(&escala, radio, radio, radio);	// tambien el grosor del tubo
 			D3DXMatrixRotationX(&rotX, -D3DX_PI * 0.5f);		// el toro nace en el plano XY: acostarlo
 			D3DXMatrixTranslation(&traslacion, puntosRuta[i].x, y, puntosRuta[i].y);
+
+			anillo->UpdateScene(escala * rotX * traslacion);
+			anillo->DrawScene(camara);
+		}
+
+		// Aros de resistencia: magenta si estan disponibles, gris si ya se usaron
+		for (size_t i = 0; i < arosResistencia.size(); i++)
+		{
+			bool usado = (i < arosUsados.size() && arosUsados[i]);
+			MPrimitives* anillo = usado ? marcadorAroUsado : marcadorAro;
+			float radio = radioAro;
+
+			if (!usado)
+				radio *= (1.0f + 0.06f * sinf(g_Time * 6.0f));	// late para llamar la atencion
+
+			float y = terreno->getTerrainCollision(arosResistencia[i]) + alturaMarcador;
+
+			D3DXMATRIX escala, rotX, traslacion;
+			D3DXMatrixScaling(&escala, radio, radio, radio);
+			D3DXMatrixRotationX(&rotX, -D3DX_PI * 0.5f);
+			D3DXMatrixTranslation(&traslacion, arosResistencia[i].x, y, arosResistencia[i].y);
 
 			anillo->UpdateScene(escala * rotX * traslacion);
 			anillo->DrawScene(camara);
@@ -1115,12 +1336,24 @@ public:
 		marcadorMeta = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorSig = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorPunto = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorAro = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorAroUsado = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		hudFlecha = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudPanel = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		for (int i = 0; i < 4; i++)
+			hudQte[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudQteBarra = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudQteBarraFondo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 
 		ColorPlano(marcadorMeta, 255, 200, 60);		// dorado
 		ColorPlano(marcadorSig, 80, 255, 120);		// verde
 		ColorPlano(marcadorPunto, 90, 160, 255);	// azul
+		ColorPlano(marcadorAro, 255, 80, 220);		// magenta: aro disponible
+		ColorPlano(marcadorAroUsado, 90, 90, 90);	// gris: aro ya usado
+		ColorPlano(hudQteBarra, 255, 210, 70);		// amarillo: tiempo restante
+		ColorPlano(hudQteBarraFondo, 40, 45, 60);	// pista oscura
+
+		srand((unsigned int)time(NULL));			// secuencias aleatorias del QTE
 
 		CargarRuta();
 		CargarVistas();

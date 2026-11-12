@@ -2,6 +2,7 @@
 # Generado dentro del juego con F2 + P. Los valores de abajo se pueden editar a mano.
 radio_meta = 9.00
 radio_punto = 9.00
+radio_aro = 6.00
 hud_y = 0.62
 altura_marcador = 0.35
 velocidad = 12.00
@@ -30,3 +31,10 @@ resistencia = 15.00
 79.46, 120.87
 90.19, 132.95
 127.07, 151.66
+aro = 182.20, 167.26
+aro = 202.39, 224.08
+aro = 147.03, 277.64
+aro = 57.59, 203.67
+aro = 55.66, 98.54
+aro = 143.67, 31.79
+aro = 97.38, 90.30
