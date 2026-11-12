@@ -1,0 +1,15 @@
+# Circuito: la primera linea de puntos es la meta, luego los checkpoints en orden.
+# Generado dentro del juego con F2 + P. Los valores de abajo se pueden editar a mano.
+radio_meta = 9.00
+radio_punto = 9.00
+hud_y = 0.62
+altura_marcador = 0.20
+127.41, 151.56
+204.25, 185.07
+200.75, 275.32
+103.09, 275.57
+50.12, 202.84
+54.70, 109.09
+124.26, 29.96
+77.55, 133.86
+127.23, 151.61

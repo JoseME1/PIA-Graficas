@@ -128,9 +128,12 @@ public:
 		this->Radius = Radius;
 		this->radius = radius;
 
+		// createTorus solo escribe los indices de las caras que unen las filas y columnas,
+		// asi que el conteo real es (Slices-1)*(Stacks-1)*6 y no Slices*Stacks*6
+		// (el resto quedaba sin inicializar y se dibujaba como geometria basura).
 		int numVertexInTwoTriangles = 6;
 		numVertex = Slices * Stacks;
-		numIndex = Slices * Stacks * numVertexInTwoTriangles;
+		numIndex = (Slices - 1) * (Stacks - 1) * numVertexInTwoTriangles;
 
 		InitScene(d3d11Device, d3d11DevCon, texturePath, textureNormalPath, ShaderType);
 		createTorus();

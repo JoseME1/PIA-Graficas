@@ -101,6 +101,19 @@ private:
 	bool modoRuta = false;
 	bool f2Last = false, pLast = false, backLast = false, eLast = false;
 
+	// Marcadores del circuito dibujados en el mundo
+	MPrimitives* marcadorMeta = nullptr;	// anillo dorado en la meta
+	MPrimitives* marcadorSig = nullptr;		// anillo verde en el siguiente punto
+	MPrimitives* marcadorPunto = nullptr;	// anillo azul en el resto
+	float alturaMarcador = 0.35f;			// altura de los anillos sobre el terreno
+
+	// Flecha del HUD que apunta al siguiente punto
+	MPrimitives* hudFlecha = nullptr;
+	std::vector<unsigned char> flechaPixeles;
+	float gradosFlecha = 999.0f;
+	float hudY = 0.62f;						// posicion vertical del mensaje (0 = arriba, 1 = abajo)
+	float tamFlecha = 110.0f;				// lado de la flecha en pixeles
+
 
 	float rotPerFrame;
 	float sphereSpeed;
@@ -459,9 +472,16 @@ public:
 
 	// Lee el circuito desde ruta.txt: una linea por punto, "x, z".
 	// La primera linea es la meta, las demas son los checkpoints en orden.
+	// Tambien acepta lineas de configuracion: "radio_meta = 9", "radio_punto = 9",
+	// "hud_y = 0.62", "altura_marcador = 0.2".
 	void CargarRuta()
 	{
 		puntosRuta.clear();
+
+		radioMeta = 9.0f;
+		radioPunto = 9.0f;
+		hudY = 0.62f;
+		alturaMarcador = 0.2f;
 
 		FILE* archivo = NULL;
 		if (fopen_s(&archivo, "ruta.txt", "r") != 0 || archivo == NULL)
@@ -475,7 +495,16 @@ public:
 		{
 			float x = 0.0f;
 			float z = 0.0f;
-			if (sscanf_s(linea, "%f , %f", &x, &z) == 2)
+
+			if (strncmp(linea, "radio_meta", 10) == 0)
+				sscanf_s(linea, "radio_meta = %f", &radioMeta);
+			else if (strncmp(linea, "radio_punto", 11) == 0)
+				sscanf_s(linea, "radio_punto = %f", &radioPunto);
+			else if (strncmp(linea, "hud_y", 5) == 0)
+				sscanf_s(linea, "hud_y = %f", &hudY);
+			else if (strncmp(linea, "altura_marcador", 15) == 0)
+				sscanf_s(linea, "altura_marcador = %f", &alturaMarcador);
+			else if (sscanf_s(linea, "%f , %f", &x, &z) == 2)
 				puntosRuta.push_back(D3DXVECTOR2(x, z));
 		}
 		fclose(archivo);
@@ -490,8 +519,12 @@ public:
 		if (fopen_s(&archivo, "ruta.txt", "w") != 0 || archivo == NULL)
 			return;
 
-		fprintf(archivo, "# Circuito: la primera linea es la meta, luego los checkpoints en orden.\n");
-		fprintf(archivo, "# Generado dentro del juego con F2 + P.\n");
+		fprintf(archivo, "# Circuito: la primera linea de puntos es la meta, luego los checkpoints en orden.\n");
+		fprintf(archivo, "# Generado dentro del juego con F2 + P. Los valores de abajo se pueden editar a mano.\n");
+		fprintf(archivo, "radio_meta = %.2f\n", radioMeta);
+		fprintf(archivo, "radio_punto = %.2f\n", radioPunto);
+		fprintf(archivo, "hud_y = %.2f\n", hudY);
+		fprintf(archivo, "altura_marcador = %.2f\n", alturaMarcador);
 		for (size_t i = 0; i < puntosRuta.size(); i++)
 			fprintf(archivo, "%.2f, %.2f\n", puntosRuta[i].x, puntosRuta[i].y);
 		fclose(archivo);
@@ -535,8 +568,13 @@ public:
 
 			if (estadoCarrera == CarreraCorriendo)
 			{
+				float ndx = puntosRuta[siguientePunto].x - playerPos.x;
+				float ndz = puntosRuta[siguientePunto].y - playerPos.z;
+				float distancia = sqrtf(ndx * ndx + ndz * ndz);
+
 				wchar_t buffer[128];
-				swprintf_s(buffer, L"Punto %d de %d", siguientePunto, (int)puntosRuta.size() - 1);
+				swprintf_s(buffer, L"Punto %d de %d    (%.0f m)",
+					siguientePunto, (int)puntosRuta.size() - 1, distancia);
 				hudTexto = buffer;
 			}
 			else
@@ -580,9 +618,93 @@ public:
 		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
 
 		float x = (hudScreenW - hudAncho) * 0.5f;
-		float y = hudScreenH * 0.62f;
+		float y = hudScreenH * hudY;
 		hudQuad->DrawHUD(x, y, (float)hudAncho, (float)hudAlto, hudScreenW, hudScreenH);
 
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+
+		if (estadoCarrera == CarreraCorriendo && !modoRuta)
+			DibujarFlechaHUD();
+	}
+
+	// Pinta un objeto con un color plano (textura 2x2 generada en CPU).
+	static void ColorPlano(MPrimitives* objeto, unsigned char r, unsigned char g, unsigned char b)
+	{
+		unsigned char pixeles[16];
+		for (int i = 0; i < 4; i++)
+		{
+			pixeles[i * 4 + 0] = b;
+			pixeles[i * 4 + 1] = g;
+			pixeles[i * 4 + 2] = r;
+			pixeles[i * 4 + 3] = 255;
+		}
+		objeto->SetTextureFromPixels(2, 2, pixeles);
+	}
+
+	// Dibuja un anillo acostado en el suelo en cada punto del circuito.
+	void DibujarMarcadores()
+	{
+		if (puntosRuta.empty())
+			return;
+
+		for (int i = 0; i < (int)puntosRuta.size(); i++)
+		{
+			MPrimitives* anillo = marcadorPunto;
+			float radio = radioPunto;
+
+			if (i == 0)
+			{
+				anillo = marcadorMeta;
+				radio = radioMeta;
+			}
+			else if (i == siguientePunto && estadoCarrera == CarreraCorriendo)
+			{
+				anillo = marcadorSig;
+				radio = radioPunto * (1.0f + 0.06f * sinf(g_Time * 6.0f));	// late para llamar la atencion
+			}
+
+			float y = terreno->getTerrainCollision(puntosRuta[i]) + alturaMarcador;
+
+			D3DXMATRIX escala, rotX, traslacion;
+			D3DXMatrixScaling(&escala, radio, radio, radio);	// tambien el grosor del tubo
+			D3DXMatrixRotationX(&rotX, -D3DX_PI * 0.5f);		// el toro nace en el plano XY: acostarlo
+			D3DXMatrixTranslation(&traslacion, puntosRuta[i].x, y, puntosRuta[i].y);
+
+			anillo->UpdateScene(escala * rotX * traslacion);
+			anillo->DrawScene(camara);
+		}
+	}
+
+	// Flecha en pantalla que apunta al siguiente checkpoint.
+	void DibujarFlechaHUD()
+	{
+		float dx = puntosRuta[siguientePunto].x - playerPos.x;
+		float dz = puntosRuta[siguientePunto].y - playerPos.z;
+
+		if (dx * dx + dz * dz < 1.0f)
+			return;
+
+		// Angulo de la direccion respecto a la camara: 0 = de frente, 90 = a la derecha
+		D3DXVECTOR3 dir(dx, 0.0f, dz);
+		D3DXVec3Normalize(&dir, &dir);
+		float derecha = D3DXVec3Dot(&dir, &camara->Right);
+		float adelante = D3DXVec3Dot(&dir, &camara->Forward);
+		float grados = atan2f(derecha, adelante) * 180.0f / D3DX_PI;
+
+		if (fabsf(grados - gradosFlecha) > 3.0f)
+		{
+			GenerarFlechaBGRA(128, grados, 255, 255, 255, flechaPixeles);
+			hudFlecha->SetTextureFromPixels(128, 128, flechaPixeles.data());
+			gradosFlecha = grados;
+		}
+
+		float x = (hudScreenW - tamFlecha) * 0.5f;
+		float y = hudScreenH * hudY - tamFlecha - 10.0f;
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+		hudFlecha->DrawHUD(x, y, tamFlecha, tamFlecha, hudScreenW, hudScreenH);
 		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
@@ -638,6 +760,17 @@ public:
 		blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
 		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
 		d3d11Device->CreateBlendState(&blendDesc, &alphaBlendState);
+
+		// Marcadores del circuito: anillos de color plano en el suelo.
+		// El toro se crea con radio 1 y se escala al radio real de cada punto.
+		marcadorMeta = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorSig = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorPunto = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		hudFlecha = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+
+		ColorPlano(marcadorMeta, 255, 200, 60);		// dorado
+		ColorPlano(marcadorSig, 80, 255, 120);		// verde
+		ColorPlano(marcadorPunto, 90, 160, 255);	// azul
 
 		CargarRuta();
 		vKeyLast = false;
@@ -931,6 +1064,8 @@ public:
 
 		terreno->DrawScene(camara);
 		skydomo->DrawScene(skyCamara);
+
+		DibujarMarcadores();
 
 		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
 		Bitmap->DrawBitmap(camara);
