@@ -85,17 +85,24 @@ private:
 	int hudAncho = 1000;
 	int hudAlto = 120;
 	int hudFuente = 30;
+	int hudAnchoDibujado = 0;
+	int hudAltoDibujado = 0;
 	int hudScreenW = 1920;
 	int hudScreenH = 1080;
 
 	// Circuito de la carrera (punto 0 = meta, el resto = checkpoints en orden)
-	enum EstadoCarrera { CarreraSinRuta, CarreraEsperando, CarreraCorriendo, CarreraTerminada };
+	enum EstadoCarrera { CarreraSinRuta, CarreraEsperando, CarreraCuenta, CarreraCorriendo, CarreraTerminada };
 	std::vector<D3DXVECTOR2> puntosRuta;
 	EstadoCarrera estadoCarrera = CarreraSinRuta;
 	int siguientePunto = 1;
 	float tiempoMensaje = 0.0f;
 	float radioMeta = 9.0f;
 	float radioPunto = 9.0f;
+
+	// Carrera automatica (la calaca corre sola de checkpoint a checkpoint)
+	bool autoCorriendo = false;
+	float cuentaRegresiva = 0.0f;
+	float velocidadCarrera = 12.0f;
 
 	// Modo de captura de ruta
 	bool modoRuta = false;
@@ -424,7 +431,7 @@ public:
 			hudTexto = buffer;
 		}
 
-		// Arrancar la carrera con E junto a la meta
+		// Arrancar la carrera con E junto a la meta: cuenta regresiva y luego corre sola
 		bool eDown = (keyboardState[DIK_E] != 0);
 		if (eDown && !eLast && !modoRuta && estadoCarrera == CarreraEsperando)
 		{
@@ -432,8 +439,10 @@ public:
 			float dz = playerPos.z - puntosRuta[0].y;
 			if (dx * dx + dz * dz <= radioMeta * radioMeta)
 			{
-				estadoCarrera = CarreraCorriendo;
+				estadoCarrera = CarreraCuenta;
+				cuentaRegresiva = 4.0f;
 				siguientePunto = 1;
+				thirdPerson = true;		// la carrera se ve desde atras de la calaca
 			}
 		}
 		eLast = eDown;
@@ -441,6 +450,37 @@ public:
 		bool vDown = (keyboardState[DIK_V] != 0);
 		if (vDown && !vKeyLast) thirdPerson = !thirdPerson;
 		vKeyLast = vDown;
+
+		// Durante la cuenta y la carrera automatica el jugador no controla a la calaca
+		if (estadoCarrera == CarreraCuenta || autoCorriendo)
+		{
+			moveLeftRight = 0.0f;
+			moveBackForward = 0.0f;
+			camYaw = 0.0f;
+			camPitch = 0.0f;
+		}
+
+		// La camara gira suave hacia el siguiente punto (y la calaca mira hacia donde corre)
+		if (autoCorriendo && siguientePunto < (int)puntosRuta.size())
+		{
+			float dx = puntosRuta[siguientePunto].x - playerPos.x;
+			float dz = puntosRuta[siguientePunto].y - playerPos.z;
+
+			if (dx * dx + dz * dz > 0.01f)
+			{
+				float objetivo = atan2f(dx, dz);
+				float diferencia = objetivo - camara->Yaw;
+
+				while (diferencia > D3DX_PI) diferencia -= 2.0f * D3DX_PI;
+				while (diferencia < -D3DX_PI) diferencia += 2.0f * D3DX_PI;
+
+				float maxGiro = 2.5f * deltaTime;
+				if (diferencia > maxGiro) diferencia = maxGiro;
+				if (diferencia < -maxGiro) diferencia = -maxGiro;
+
+				camYaw = diferencia;
+			}
+		}
 
 		if (thirdPerson)
 		{
@@ -481,7 +521,8 @@ public:
 		radioMeta = 9.0f;
 		radioPunto = 9.0f;
 		hudY = 0.62f;
-		alturaMarcador = 0.2f;
+		alturaMarcador = 0.35f;
+		velocidadCarrera = 12.0f;
 
 		FILE* archivo = NULL;
 		if (fopen_s(&archivo, "ruta.txt", "r") != 0 || archivo == NULL)
@@ -504,12 +545,16 @@ public:
 				sscanf_s(linea, "hud_y = %f", &hudY);
 			else if (strncmp(linea, "altura_marcador", 15) == 0)
 				sscanf_s(linea, "altura_marcador = %f", &alturaMarcador);
+			else if (strncmp(linea, "velocidad", 9) == 0)
+				sscanf_s(linea, "velocidad = %f", &velocidadCarrera);
 			else if (sscanf_s(linea, "%f , %f", &x, &z) == 2)
 				puntosRuta.push_back(D3DXVECTOR2(x, z));
 		}
 		fclose(archivo);
 
 		siguientePunto = 1;
+		autoCorriendo = false;			// si se recarga a mitad de carrera, se corta la carrera automatica
+		cuentaRegresiva = 0.0f;
 		estadoCarrera = (puntosRuta.size() >= 2) ? CarreraEsperando : CarreraSinRuta;
 	}
 
@@ -525,6 +570,7 @@ public:
 		fprintf(archivo, "radio_punto = %.2f\n", radioPunto);
 		fprintf(archivo, "hud_y = %.2f\n", hudY);
 		fprintf(archivo, "altura_marcador = %.2f\n", alturaMarcador);
+		fprintf(archivo, "velocidad = %.2f\n", velocidadCarrera);
 		for (size_t i = 0; i < puntosRuta.size(); i++)
 			fprintf(archivo, "%.2f, %.2f\n", puntosRuta[i].x, puntosRuta[i].y);
 		fclose(archivo);
@@ -549,40 +595,69 @@ public:
 				hudTexto = L"Presiona  E  para empezar la carrera";
 			else
 				hudTexto.clear();
+			return;
 		}
-		else if (estadoCarrera == CarreraCorriendo)
-		{
-			float dx = playerPos.x - puntosRuta[siguientePunto].x;
-			float dz = playerPos.z - puntosRuta[siguientePunto].y;
 
-			if (dx * dx + dz * dz <= radioPunto * radioPunto)
+		if (estadoCarrera == CarreraCuenta)
+		{
+			cuentaRegresiva -= deltaTime;
+
+			if (cuentaRegresiva > 3.0f)		hudTexto = L"3";
+			else if (cuentaRegresiva > 2.0f)	hudTexto = L"2";
+			else if (cuentaRegresiva > 1.0f)	hudTexto = L"1";
+			else if (cuentaRegresiva > 0.0f)	hudTexto = L"\u00A1Ya!";
+			else
+			{
+				estadoCarrera = CarreraCorriendo;
+				autoCorriendo = true;
+				hudTexto.clear();
+			}
+			return;
+		}
+
+		if (estadoCarrera == CarreraCorriendo)
+		{
+			float dx = puntosRuta[siguientePunto].x - playerPos.x;
+			float dz = puntosRuta[siguientePunto].y - playerPos.z;
+			float distancia = sqrtf(dx * dx + dz * dz);
+
+			// La calaca avanza sola hacia el siguiente punto
+			if (autoCorriendo && distancia > 0.001f)
+			{
+				float paso = velocidadCarrera * deltaTime;
+				if (paso > distancia) paso = distancia;
+
+				playerPos.x += dx / distancia * paso;
+				playerPos.z += dz / distancia * paso;
+
+				dx = puntosRuta[siguientePunto].x - playerPos.x;
+				dz = puntosRuta[siguientePunto].y - playerPos.z;
+				distancia = sqrtf(dx * dx + dz * dz);
+			}
+
+			if (distancia <= radioPunto)
 			{
 				siguientePunto++;
 
 				if (siguientePunto >= (int)puntosRuta.size())
 				{
+					// Fin de la carrera: se devuelve el control al jugador
 					estadoCarrera = CarreraTerminada;
+					autoCorriendo = false;
 					tiempoMensaje = 6.0f;
+					hudTexto = L"Carrera terminada!";
+					return;
 				}
 			}
 
-			if (estadoCarrera == CarreraCorriendo)
-			{
-				float ndx = puntosRuta[siguientePunto].x - playerPos.x;
-				float ndz = puntosRuta[siguientePunto].y - playerPos.z;
-				float distancia = sqrtf(ndx * ndx + ndz * ndz);
-
-				wchar_t buffer[128];
-				swprintf_s(buffer, L"Punto %d de %d    (%.0f m)",
-					siguientePunto, (int)puntosRuta.size() - 1, distancia);
-				hudTexto = buffer;
-			}
-			else
-			{
-				hudTexto = L"Carrera terminada!";
-			}
+			wchar_t buffer[128];
+			swprintf_s(buffer, L"Punto %d de %d    (%.0f m)",
+				siguientePunto, (int)puntosRuta.size() - 1, distancia);
+			hudTexto = buffer;
+			return;
 		}
-		else if (estadoCarrera == CarreraTerminada)
+
+		if (estadoCarrera == CarreraTerminada)
 		{
 			tiempoMensaje -= deltaTime;
 
@@ -607,19 +682,27 @@ public:
 			return;
 		}
 
-		if (hudTexto != hudTextoDibujado)
+		// La cuenta regresiva se dibuja con fuente grande y centrada en pantalla
+		bool grande = (estadoCarrera == CarreraCuenta);
+		int ancho = grande ? 640 : hudAncho;
+		int alto = grande ? 360 : hudAlto;
+		int fuente = grande ? 240 : hudFuente;
+
+		if (hudTexto != hudTextoDibujado || ancho != hudAnchoDibujado || alto != hudAltoDibujado)
 		{
-			GenerarTextoBGRA(hudTexto.c_str(), hudAncho, hudAlto, hudFuente, 255, 255, 255, hudPixeles);
-			hudQuad->SetTextureFromPixels((UINT)hudAncho, (UINT)hudAlto, hudPixeles.data());
+			GenerarTextoBGRA(hudTexto.c_str(), ancho, alto, fuente, 255, 255, 255, hudPixeles);
+			hudQuad->SetTextureFromPixels((UINT)ancho, (UINT)alto, hudPixeles.data());
 			hudTextoDibujado = hudTexto;
+			hudAnchoDibujado = ancho;
+			hudAltoDibujado = alto;
 		}
 
 		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
 		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
 
-		float x = (hudScreenW - hudAncho) * 0.5f;
-		float y = hudScreenH * hudY;
-		hudQuad->DrawHUD(x, y, (float)hudAncho, (float)hudAlto, hudScreenW, hudScreenH);
+		float x = (hudScreenW - ancho) * 0.5f;
+		float y = grande ? (hudScreenH - alto) * 0.35f : hudScreenH * hudY;
+		hudQuad->DrawHUD(x, y, (float)ancho, (float)alto, hudScreenW, hudScreenH);
 
 		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
@@ -658,7 +741,7 @@ public:
 				anillo = marcadorMeta;
 				radio = radioMeta;
 			}
-			else if (i == siguientePunto && estadoCarrera == CarreraCorriendo)
+			else if (i == siguientePunto && (estadoCarrera == CarreraCorriendo || estadoCarrera == CarreraCuenta))
 			{
 				anillo = marcadorSig;
 				radio = radioPunto * (1.0f + 0.06f * sinf(g_Time * 6.0f));	// late para llamar la atencion
@@ -907,7 +990,12 @@ public:
 		D3DXMatrixScaling(&escalaCalaca, 2.0f, 2.0f, 2.0f);
 		D3DXMatrixRotationY(&rotCalaca, camara->Yaw + D3DX_PI);
 
-		D3DXMatrixTranslation(&lugarCalaca, playerPos.x, playerPos.y + 0.05f, playerPos.z);
+		// Pequeño rebote para que se note que va corriendo
+		float reboteCalaca = 0.0f;
+		if (autoCorriendo)
+			reboteCalaca = fabsf(sinf(g_Time * 60.0f)) * 0.4f;
+
+		D3DXMatrixTranslation(&lugarCalaca, playerPos.x, playerPos.y + 0.05f + reboteCalaca, playerPos.z);
 
 		D3DXMATRIX escalaCalaca2, lugarCalaca2;
 		D3DXMatrixScaling(&escalaCalaca2, 2.0f, 2.0f, 2.0f);
@@ -982,44 +1070,49 @@ public:
 		if (playerPos.z < 25.0f) playerPos.z = 25.0f;
 		if (playerPos.z > 280.0f) playerPos.z = 280.0f;
 
-		// Colisiones con objetos (circulos en XZ)
-		for (int i = 0; i < 9; i++)
+		// Durante la carrera automatica la calaca sigue su carril: si chocara con un
+		// objeto quedaria empujada hacia atras y la carrera se trabaria.
+		if (!autoCorriendo)
 		{
-			float dx = playerPos.x - colliders[i].x;
-			float dz = playerPos.z - colliders[i].z;
-			float dist = sqrtf(dx * dx + dz * dz);
-			float minDist = colliders[i].radius + playerRadius;
-			if (dist < minDist && dist > 0.001f)
+			// Colisiones con objetos (circulos en XZ)
+			for (int i = 0; i < 9; i++)
 			{
-				playerPos.x = colliders[i].x + dx / dist * minDist;
-				playerPos.z = colliders[i].z + dz / dist * minDist;
+				float dx = playerPos.x - colliders[i].x;
+				float dz = playerPos.z - colliders[i].z;
+				float dist = sqrtf(dx * dx + dz * dz);
+				float minDist = colliders[i].radius + playerRadius;
+				if (dist < minDist && dist > 0.001f)
+				{
+					playerPos.x = colliders[i].x + dx / dist * minDist;
+					playerPos.z = colliders[i].z + dz / dist * minDist;
+				}
 			}
-		}
 
-		// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
-		for (int i = 0; i < 20; i++)
-		{
-			float minX = castleWalls[i].minX - playerRadius;
-			float maxX = castleWalls[i].maxX + playerRadius;
-			float minZ = castleWalls[i].minZ - playerRadius;
-			float maxZ = castleWalls[i].maxZ + playerRadius;
-			float px = playerPos.x;
-			float pz = playerPos.z;
-			if (px > minX && px < maxX && pz > minZ && pz < maxZ)
+			// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
+			for (int i = 0; i < 20; i++)
 			{
-				float pushLeft = px - minX;
-				float pushRight = maxX - px;
-				float pushDown = pz - minZ;
-				float pushUp = maxZ - pz;
-				float minPush = pushLeft;
-				int side = 0;
-				if (pushRight < minPush) { minPush = pushRight; side = 1; }
-				if (pushDown < minPush) { minPush = pushDown; side = 2; }
-				if (pushUp < minPush) { minPush = pushUp; side = 3; }
-				if (side == 0) playerPos.x = minX;
-				if (side == 1) playerPos.x = maxX;
-				if (side == 2) playerPos.z = minZ;
-				if (side == 3) playerPos.z = maxZ;
+				float minX = castleWalls[i].minX - playerRadius;
+				float maxX = castleWalls[i].maxX + playerRadius;
+				float minZ = castleWalls[i].minZ - playerRadius;
+				float maxZ = castleWalls[i].maxZ + playerRadius;
+				float px = playerPos.x;
+				float pz = playerPos.z;
+				if (px > minX && px < maxX && pz > minZ && pz < maxZ)
+				{
+					float pushLeft = px - minX;
+					float pushRight = maxX - px;
+					float pushDown = pz - minZ;
+					float pushUp = maxZ - pz;
+					float minPush = pushLeft;
+					int side = 0;
+					if (pushRight < minPush) { minPush = pushRight; side = 1; }
+					if (pushDown < minPush) { minPush = pushDown; side = 2; }
+					if (pushUp < minPush) { minPush = pushUp; side = 3; }
+					if (side == 0) playerPos.x = minX;
+					if (side == 1) playerPos.x = maxX;
+					if (side == 2) playerPos.z = minZ;
+					if (side == 3) playerPos.z = maxZ;
+				}
 			}
 		}
 
