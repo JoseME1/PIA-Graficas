@@ -119,8 +119,13 @@ public:
 		swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 
 		//Create our SwapChain
-		D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, NULL, NULL, NULL,
+		HRESULT hr = D3D11CreateDeviceAndSwapChain(NULL, D3D_DRIVER_TYPE_HARDWARE, NULL, NULL, NULL, NULL,
 			D3D11_SDK_VERSION, &swapChainDesc, &SwapChain, &d3d11Device, NULL, &d3d11DevCon);
+
+		if (FAILED(hr))
+		{
+			return false;
+		}
 
 		//Create our BackBuffer
 		ID3D11Texture2D* BackBuffer;
@@ -735,7 +740,18 @@ public:
 		}
 
 		//Present the backbuffer to the screen
-		SwapChain->Present(1, 0);
+		HRESULT hr = SwapChain->Present(1, 0);
+
+		if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
+		{
+			HRESULT reason = d3d11Device->GetDeviceRemovedReason();
+			MessageBox(NULL,
+				reason == DXGI_ERROR_DEVICE_HUNG
+					? L"La GPU dejó de responder (device hung).\nSe cerrará la aplicación."
+					: L"Se perdió el dispositivo de video (driver reiniciado).\nSe cerrará la aplicación.",
+				L"Error de Direct3D", MB_OK | MB_ICONERROR);
+			PostQuitMessage(0);
+		}
 	}
 
 };

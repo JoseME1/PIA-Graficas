@@ -1,6 +1,9 @@
 #ifndef _MeshPrimitives_
 #define _MeshPrimitives_
 
+#include <map>
+#include <string>
+
 class MPrimitives {
 private:
 	ID3D11Buffer* VertexBuffer;
@@ -16,13 +19,13 @@ private:
 	ID3D11Device* d3d11Device;
 	ID3D11DeviceContext* d3d11DevCon;
 
-	ID3D11ShaderResourceView* Texture;
-	ID3D11ShaderResourceView* Texture2;
-	ID3D11ShaderResourceView* NormalTexture;
+	ID3D11ShaderResourceView* Texture = nullptr;
+	ID3D11ShaderResourceView* Texture2 = nullptr;
+	ID3D11ShaderResourceView* NormalTexture = nullptr;
 	ID3D11SamplerState* TexSamplerState;
 
 	//Bitmap
-	ID3D11Texture2D* renderTargetTextureGUI;
+	ID3D11Texture2D* renderTargetTextureGUI = nullptr;
 
 	D3DXMATRIX mapView;
 	D3DXMATRIX mapProjection;
@@ -76,7 +79,7 @@ private:
 		D3DXVECTOR3 biTangent;
 	} ;
 
-	SimpleVertex* heightMapDummy;
+	SimpleVertex* heightMapDummy = nullptr;
 
 	
 
@@ -87,7 +90,7 @@ public:
 		float Radius;
 	};
 
-	SphereBoundingInfo* PrimitiveBoundings;
+	SphereBoundingInfo* PrimitiveBoundings = nullptr;
 
 	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Size, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
 	{
@@ -204,6 +207,28 @@ public:
 		createBitMap(camara);
 	}
 
+	// Carga una textura una sola vez por ruta y comparte el SRV entre todas las instancias,
+	// para no duplicar la misma textura en VRAM una vez por primitiva.
+	static ID3D11ShaderResourceView* LoadTextureCached(ID3D11Device* device, LPCWSTR path)
+	{
+		if (path == NULL || path[0] == L'\0')
+			return nullptr;
+
+		static std::map<std::wstring, ID3D11ShaderResourceView*> cache;
+		std::wstring key(path);
+
+		std::map<std::wstring, ID3D11ShaderResourceView*>::iterator it = cache.find(key);
+		if (it != cache.end())
+			return it->second;
+
+		ID3D11ShaderResourceView* srv = nullptr;
+		if (FAILED(D3DX11CreateShaderResourceViewFromFile(device, path, NULL, NULL, &srv, NULL)))
+			srv = nullptr;
+
+		cache[key] = srv;
+		return srv;
+	}
+
 	bool InitScene(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
 	{
 		//Inicializacion de variables
@@ -306,15 +331,14 @@ public:
 			&cbBuffer);
 
 		// Set the texture
-		D3DX11CreateShaderResourceViewFromFile(d3d11Device, texturePath,
-			NULL, NULL, &Texture, NULL);
+		Texture = LoadTextureCached(d3d11Device, texturePath);
 
 		// Set the normal texture
-		D3DX11CreateShaderResourceViewFromFile(d3d11Device, textureNormalPath,
-			NULL, NULL, &NormalTexture, NULL);
+		NormalTexture = LoadTextureCached(d3d11Device, textureNormalPath);
 
-		D3DX11CreateShaderResourceViewFromFile(d3d11Device, L"Texturas/rock.jpg",
-			NULL, NULL, &Texture2, NULL);
+		// La segunda capa de textura solo la usan los objetos con shader de multitextura
+		if (ShaderType == ShaderMultitextura)
+			Texture2 = LoadTextureCached(d3d11Device, L"Texturas/rock.jpg");
 
 		// Describe the Sample State
 		D3D11_SAMPLER_DESC sampDesc;
@@ -577,7 +601,9 @@ public:
 				indices[index++] = index2;
 			}
 		}
-		setTangentBinormal(vertex, indices, 6);
+		// Solo se llenan (Stacks-1)*(Slices-1)*6 indices, no Slices*Stacks*6
+		numIndex = index;
+		setTangentBinormal(vertex, indices, 3);
 
 		D3D11_BUFFER_DESC indexBufferDesc;
 		ZeroMemory(&indexBufferDesc,
@@ -912,23 +938,25 @@ public:
 
 		//  Abrimos el heightmap in binario.
 		error = fopen_s(&filePtr, filename, "rb");
-		if (error != 0)
+		if (error != 0 || filePtr == NULL)
 		{
-			//Error
+			return;
 		}
 
 		// Leemos la cabecera del archivo.
 		count = fread(&bitmapFileHeader, sizeof(BITMAPFILEHEADER), 1, filePtr);
 		if (count != 1)
 		{
-			//Error
+			fclose(filePtr);
+			return;
 		}
 
 		// Leemos la cabecera de info del archivo.
 		count = fread(&bitmapInfoHeader, sizeof(BITMAPINFOHEADER), 1, filePtr);
 		if (count != 1)
 		{
-			//Error
+			fclose(filePtr);
+			return;
 		}
 
 		// Guardamos el ancho y largo del terreno.
@@ -952,7 +980,9 @@ public:
 		count = fread(bitmapImage, 1, imageSize, filePtr);
 		if (count != imageSize)
 		{
-			//return false;
+			delete[] bitmapImage;
+			fclose(filePtr);
+			return;
 		}
 
 		// Cerramos el archivo.
@@ -1097,6 +1127,13 @@ public:
 			}
 		}
 
+		// El terreno no calcula tangentes; las inicializamos para no mandar basura al VS
+		for (index = 0; index < (int)numVertex; index++)
+		{
+			vertex[index].tangent = D3DXVECTOR3(1.0f, 0.0f, 0.0f);
+			vertex[index].biTangent = D3DXVECTOR3(0.0f, 0.0f, 1.0f);
+		}
+
 		D3D11_BUFFER_DESC vertexBufferDesc;
 		ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
 
@@ -1147,11 +1184,25 @@ public:
 
 		//Leemos hasta los ":" para leer la cantidada de vertices
 		fin.get(input);
-		while (input != ':')
+		while (input != ':' && !fin.eof())
 			fin.get(input);
+
+		if (fin.eof())
+		{
+			fin.close();
+			return false;
+		}
 
 		//Leemos la cantidad de vertices
 		fin >> numVertex;
+
+		if (fin.fail() || numVertex == 0)
+		{
+			numVertex = 0;
+			numIndex = 0;
+			fin.close();
+			return false;
+		}
 
 		//Ponemos que la cantidad de indices sea la misma que la cantidad de vertices
 		numIndex = numVertex;
@@ -1162,8 +1213,16 @@ public:
 
 		//Leemos desde el principio de la informacion
 		fin.get(input);
-		while (input != ':')
+		while (input != ':' && !fin.eof())
 			fin.get(input);
+
+		if (fin.eof())
+		{
+			fin.close();
+			delete[] ModelObject;
+			return false;
+		}
+
 		fin.get(input);
 		fin.get(input);
 
