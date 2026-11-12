@@ -196,14 +196,14 @@ private:
 	{
 		D3DXVECTOR2 pos;
 		int tipo;
-		bool usadoHoy;
+		bool usadoSlot;		// ya usado en esta hora del dia
 	};
 	std::vector<PuntoEntrenamiento> puntosEntrenamiento;
 	float radioEntrenamiento = 6.0f;
 	MPrimitives* marcadorEntVel = nullptr;		// cian, como la barra de velocidad
 	MPrimitives* marcadorEntAcel = nullptr;		// naranja, como la de aceleracion
 	MPrimitives* marcadorEntRes = nullptr;		// verde, como la de resistencia
-	MPrimitives* marcadorEntUsado = nullptr;	// gris, ya entrenado hoy
+	MPrimitives* marcadorEntUsado = nullptr;	// gris, ya usado en esta hora
 
 	// Calendario: 2 dias de entrenamiento y el tercero es la carrera.
 	// slot: 0 = mañana, 1 = dia, 2 = tarde, 3 = noche
@@ -601,7 +601,7 @@ public:
 				PuntoEntrenamiento punto;
 				punto.pos = D3DXVECTOR2(playerPos.x, playerPos.z);
 				punto.tipo = 0;
-				punto.usadoHoy = false;
+				punto.usadoSlot = false;
 				puntosEntrenamiento.push_back(punto);
 				GuardarRuta();
 			}
@@ -613,7 +613,7 @@ public:
 				PuntoEntrenamiento punto;
 				punto.pos = D3DXVECTOR2(playerPos.x, playerPos.z);
 				punto.tipo = 1;
-				punto.usadoHoy = false;
+				punto.usadoSlot = false;
 				puntosEntrenamiento.push_back(punto);
 				GuardarRuta();
 			}
@@ -625,7 +625,7 @@ public:
 				PuntoEntrenamiento punto;
 				punto.pos = D3DXVECTOR2(playerPos.x, playerPos.z);
 				punto.tipo = 2;
-				punto.usadoHoy = false;
+				punto.usadoSlot = false;
 				puntosEntrenamiento.push_back(punto);
 				GuardarRuta();
 			}
@@ -800,7 +800,7 @@ public:
 	// "hud_y = 0.62", "altura_marcador = 0.2".
 	void CargarRuta()
 	{
-		// Conserva que puntos ya se usaron hoy aunque se recargue el circuito
+		// Conserva que puntos ya se usaron en esta hora aunque se recargue el circuito
 		std::vector<PuntoEntrenamiento> anteriores = puntosEntrenamiento;
 
 		puntosRuta.clear();
@@ -858,7 +858,7 @@ public:
 				{
 					PuntoEntrenamiento punto;
 					punto.pos = D3DXVECTOR2(x, z);
-					punto.usadoHoy = false;
+					punto.usadoSlot = false;
 					if (strncmp(tipo, "velocidad", 9) == 0)			punto.tipo = 0;
 					else if (strncmp(tipo, "aceleracion", 11) == 0)	punto.tipo = 1;
 					else											punto.tipo = 2;
@@ -875,7 +875,7 @@ public:
 		}
 		fclose(archivo);
 
-		// Recupera el estado "usado hoy" de los puntos que ya existian
+		// Recupera el estado "usado en esta hora" de los puntos que ya existian
 		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
 		{
 			for (size_t j = 0; j < anteriores.size(); j++)
@@ -884,7 +884,7 @@ public:
 					fabsf(puntosEntrenamiento[i].pos.x - anteriores[j].pos.x) < 0.02f &&
 					fabsf(puntosEntrenamiento[i].pos.y - anteriores[j].pos.y) < 0.02f)
 				{
-					puntosEntrenamiento[i].usadoHoy = anteriores[j].usadoHoy;
+					puntosEntrenamiento[i].usadoSlot = anteriores[j].usadoSlot;
 					break;
 				}
 			}
@@ -1128,7 +1128,7 @@ public:
 		tiempoMensajeEntrenamiento = 0.0f;
 
 		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
-			puntosEntrenamiento[i].usadoHoy = false;
+			puntosEntrenamiento[i].usadoSlot = false;
 
 		AplicarLuzDelDia();
 		MostrarBannerDia();
@@ -1160,7 +1160,14 @@ public:
 		if (entrenamientosHoy >= 4)
 			AvanzarDia();
 		else
+		{
+			// Nueva hora del dia: cada punto vuelve a estar disponible, asi que
+			// se puede usar el mismo punto una vez por franja (4 veces al dia).
+			for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
+				puntosEntrenamiento[i].usadoSlot = false;
+
 			AplicarLuzDelDia();
+		}
 	}
 
 	// E junto a un punto de entrenamiento disponible
@@ -1177,10 +1184,10 @@ public:
 			if (dx * dx + dz * dz > radioEntrenamiento * radioEntrenamiento)
 				continue;
 
-			if (puntosEntrenamiento[i].usadoHoy)
+			if (puntosEntrenamiento[i].usadoSlot)
 				continue;
 
-			puntosEntrenamiento[i].usadoHoy = true;
+			puntosEntrenamiento[i].usadoSlot = true;
 			Entrenar(puntosEntrenamiento[i].tipo);
 			return;
 		}
@@ -1219,8 +1226,8 @@ public:
 			const wchar_t* nombre = (puntosEntrenamiento[cerca].tipo == 0) ? L"Velocidad"
 				: (puntosEntrenamiento[cerca].tipo == 1) ? L"Aceleraci\u00F3n" : L"Resistencia";
 
-			if (puntosEntrenamiento[cerca].usadoHoy)
-				swprintf_s(buffer, L"Ya entrenaste %s hoy.    Entrenamientos: %d/4",
+			if (puntosEntrenamiento[cerca].usadoSlot)
+				swprintf_s(buffer, L"Ya entrenaste %s en esta hora.    Entrenamientos: %d/4",
 					nombre, entrenamientosHoy);
 			else
 				swprintf_s(buffer, L"Presiona E para entrenar: %s    (%d/4 hoy)",
@@ -1247,7 +1254,7 @@ public:
 		RecalcularEstadisticas();
 
 		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
-			puntosEntrenamiento[i].usadoHoy = false;
+			puntosEntrenamiento[i].usadoSlot = false;
 
 		AplicarLuzDelDia();
 		MostrarBannerDia();
@@ -1585,11 +1592,11 @@ public:
 	// Dibuja un anillo acostado en el suelo en cada punto del circuito.
 	void DibujarMarcadores()
 	{
-		// Puntos de entrenamiento: color segun la barra del HUD, gris si ya se uso hoy.
+		// Puntos de entrenamiento: color segun la barra del HUD, gris si ya se uso en esta hora.
 		// El dia de la carrera ya no se muestran.
 		for (size_t i = 0; diaActual < 3 && i < puntosEntrenamiento.size(); i++)
 		{
-			bool usado = puntosEntrenamiento[i].usadoHoy;
+			bool usado = puntosEntrenamiento[i].usadoSlot;
 			MPrimitives* anillo = marcadorEntUsado;
 			if (!usado)
 			{
@@ -1814,7 +1821,7 @@ public:
 		ColorPlano(marcadorEntVel, 80, 200, 255);	// cian: velocidad
 		ColorPlano(marcadorEntAcel, 255, 170, 60);	// naranja: aceleracion
 		ColorPlano(marcadorEntRes, 80, 230, 110);	// verde: resistencia
-		ColorPlano(marcadorEntUsado, 90, 90, 90);	// gris: ya entrenado hoy
+		ColorPlano(marcadorEntUsado, 90, 90, 90);	// gris: ya usado en esta hora
 		ColorPlano(hudQteBarra, 255, 210, 70);		// amarillo: tiempo restante
 		ColorPlano(hudQteBarraFondo, 40, 45, 60);	// pista oscura
 		ColorPlano(hudBannerFondo, 15, 18, 28, 170);	// fondo semitransparente del aviso
