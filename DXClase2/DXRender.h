@@ -115,6 +115,15 @@ private:
 	float velocidadActual = 0.0f;		// velocidad en este instante (unidades/s)
 	float resistenciaActual = 1.0f;		// 1 = llena, 0 = agotada
 
+	// Valores base leidos de ruta.txt. Las mejoras de entrenamiento se aplican
+	// sobre estos y no se escriben de vuelta al archivo.
+	float velocidadBase = 12.0f;
+	float aceleracionBase = 2.0f;
+	float resistenciaBase = 15.0f;
+	int mejorasVelocidad = 0;
+	int mejorasAceleracion = 0;
+	int mejorasResistencia = 0;
+
 	// Modo de captura de ruta
 	bool modoRuta = false;
 	bool f2Last = false, pLast = false, backLast = false, eLast = false;
@@ -180,6 +189,42 @@ private:
 	bool rLast = false, delLast = false;
 	float hudY = 0.62f;						// posicion vertical del mensaje (0 = arriba, 1 = abajo)
 	float tamFlecha = 110.0f;				// lado de la flecha en pixeles
+
+	// Puntos de entrenamiento (F2 + 1/2/3). Cada uno mejora un 10% su stat.
+	// tipo: 0 = velocidad, 1 = aceleracion, 2 = resistencia
+	struct PuntoEntrenamiento
+	{
+		D3DXVECTOR2 pos;
+		int tipo;
+		bool usadoHoy;
+	};
+	std::vector<PuntoEntrenamiento> puntosEntrenamiento;
+	float radioEntrenamiento = 6.0f;
+	MPrimitives* marcadorEntVel = nullptr;		// cian, como la barra de velocidad
+	MPrimitives* marcadorEntAcel = nullptr;		// naranja, como la de aceleracion
+	MPrimitives* marcadorEntRes = nullptr;		// verde, como la de resistencia
+	MPrimitives* marcadorEntUsado = nullptr;	// gris, ya entrenado hoy
+
+	// Calendario: 2 dias de entrenamiento y el tercero es la carrera.
+	// slot: 0 = mañana, 1 = dia, 2 = tarde, 3 = noche
+	int diaActual = 1;
+	int entrenamientosHoy = 0;
+	int slotActual = 0;
+	bool k1Last = false, k2Last = false, k3Last = false, k4Last = false;
+	float tiempoMensajeEntrenamiento = 0.0f;
+	std::wstring mensajeEntrenamiento;
+
+	// Aviso grande al empezar cada dia (titulo + subtitulo)
+	MPrimitives* hudBannerFondo = nullptr;
+	MPrimitives* hudBannerTitulo = nullptr;
+	MPrimitives* hudBannerSub = nullptr;
+	std::vector<unsigned char> bannerPixelesTitulo;
+	std::vector<unsigned char> bannerPixelesSub;
+	std::wstring bannerTitulo;
+	std::wstring bannerSub;
+	std::wstring bannerTituloDibujado;
+	std::wstring bannerSubDibujado;
+	float bannerTiempo = 0.0f;
 
 
 	float rotPerFrame;
@@ -549,11 +594,59 @@ public:
 			}
 			delLast = delDown;
 
-			wchar_t buffer[320];
+			// 1/2/3 agregan un punto de entrenamiento del tipo correspondiente
+			bool k1Down = (keyboardState[DIK_1] != 0);
+			if (k1Down && !k1Last)
+			{
+				PuntoEntrenamiento punto;
+				punto.pos = D3DXVECTOR2(playerPos.x, playerPos.z);
+				punto.tipo = 0;
+				punto.usadoHoy = false;
+				puntosEntrenamiento.push_back(punto);
+				GuardarRuta();
+			}
+			k1Last = k1Down;
+
+			bool k2Down = (keyboardState[DIK_2] != 0);
+			if (k2Down && !k2Last)
+			{
+				PuntoEntrenamiento punto;
+				punto.pos = D3DXVECTOR2(playerPos.x, playerPos.z);
+				punto.tipo = 1;
+				punto.usadoHoy = false;
+				puntosEntrenamiento.push_back(punto);
+				GuardarRuta();
+			}
+			k2Last = k2Down;
+
+			bool k3Down = (keyboardState[DIK_3] != 0);
+			if (k3Down && !k3Last)
+			{
+				PuntoEntrenamiento punto;
+				punto.pos = D3DXVECTOR2(playerPos.x, playerPos.z);
+				punto.tipo = 2;
+				punto.usadoHoy = false;
+				puntosEntrenamiento.push_back(punto);
+				GuardarRuta();
+			}
+			k3Last = k3Down;
+
+			// 4 borra el ultimo punto de entrenamiento
+			bool k4Down = (keyboardState[DIK_4] != 0);
+			if (k4Down && !k4Last && !puntosEntrenamiento.empty())
+			{
+				puntosEntrenamiento.pop_back();
+				GuardarRuta();
+			}
+			k4Last = k4Down;
+
+			wchar_t buffer[384];
 			swprintf_s(buffer,
 				L"Modo ruta: %d puntos    [P] agregar    [Retroceso] borrar    [F2] salir\n"
-				L"Aros: %d    [R] agregar    [Supr] borrar    Posicion:  X %.1f   Z %.1f",
-				(int)puntosRuta.size(), (int)arosResistencia.size(), playerPos.x, playerPos.z);
+				L"Aros: %d    [R] agregar    [Supr] borrar    Posicion:  X %.1f   Z %.1f\n"
+				L"Entrenamientos: %d    [1] velocidad    [2] aceleraci\u00F3n    [3] resistencia    [4] borrar",
+				(int)puntosRuta.size(), (int)arosResistencia.size(), playerPos.x, playerPos.z,
+				(int)puntosEntrenamiento.size());
 			hudTexto = buffer;
 		}
 
@@ -591,24 +684,32 @@ public:
 			}
 		}
 
-		// Arrancar la carrera con E junto a la meta: cuenta regresiva y luego corre sola
+		// E: durante los dias de entrenamiento entrena en el punto cercano;
+		// el dia de la carrera la usa para arrancar junto a la meta.
 		bool eDown = (keyboardState[DIK_E] != 0);
-		if (eDown && !eLast && !modoRuta && !modoCamara && estadoCarrera == CarreraEsperando)
+		if (eDown && !eLast && !modoRuta && !modoCamara)
 		{
-			float dx = playerPos.x - puntosRuta[0].x;
-			float dz = playerPos.z - puntosRuta[0].y;
-			if (dx * dx + dz * dz <= radioMeta * radioMeta)
+			if (diaActual < 3)
 			{
-				estadoCarrera = CarreraCuenta;
-				cuentaRegresiva = 4.0f;
-				siguientePunto = 1;
-				thirdPerson = true;		// la carrera se ve desde atras de la calaca
-				yawCalaca = camara->Yaw;
-				vistaActual = -1;
-				velocidadActual = 0.0f;		// arranca parada y acelera
-				resistenciaActual = 1.0f;	// resistencia llena
-				qteActivo = false;
-				arosUsados.assign(arosResistencia.size(), false);	// aros disponibles otra vez
+				IntentarEntrenar();
+			}
+			else if (estadoCarrera == CarreraEsperando)
+			{
+				float dx = playerPos.x - puntosRuta[0].x;
+				float dz = playerPos.z - puntosRuta[0].y;
+				if (dx * dx + dz * dz <= radioMeta * radioMeta)
+				{
+					estadoCarrera = CarreraCuenta;
+					cuentaRegresiva = 4.0f;
+					siguientePunto = 1;
+					thirdPerson = true;		// la carrera se ve desde atras de la calaca
+					yawCalaca = camara->Yaw;
+					vistaActual = -1;
+					velocidadActual = 0.0f;		// arranca parada y acelera
+					resistenciaActual = 1.0f;	// resistencia llena
+					qteActivo = false;
+					arosUsados.assign(arosResistencia.size(), false);	// aros disponibles otra vez
+				}
 			}
 		}
 		eLast = eDown;
@@ -699,19 +800,24 @@ public:
 	// "hud_y = 0.62", "altura_marcador = 0.2".
 	void CargarRuta()
 	{
+		// Conserva que puntos ya se usaron hoy aunque se recargue el circuito
+		std::vector<PuntoEntrenamiento> anteriores = puntosEntrenamiento;
+
 		puntosRuta.clear();
 		arosResistencia.clear();
 		arosUsados.clear();
+		puntosEntrenamiento.clear();
 		qteActivo = false;
 
 		radioMeta = 9.0f;
 		radioPunto = 9.0f;
 		radioAro = 6.0f;
+		radioEntrenamiento = 6.0f;
 		hudY = 0.62f;
 		alturaMarcador = 0.35f;
-		velocidadCarrera = 12.0f;
-		aceleracionCarrera = 2.0f;
-		resistenciaCarrera = 15.0f;
+		velocidadBase = 12.0f;
+		aceleracionBase = 2.0f;
+		resistenciaBase = 15.0f;
 
 		FILE* archivo = NULL;
 		if (fopen_s(&archivo, "ruta.txt", "r") != 0 || archivo == NULL)
@@ -732,16 +838,33 @@ public:
 				sscanf_s(linea, "radio_punto = %f", &radioPunto);
 			else if (strncmp(linea, "radio_aro", 9) == 0)
 				sscanf_s(linea, "radio_aro = %f", &radioAro);
+			else if (strncmp(linea, "radio_entrenamiento", 19) == 0)
+				sscanf_s(linea, "radio_entrenamiento = %f", &radioEntrenamiento);
 			else if (strncmp(linea, "hud_y", 5) == 0)
 				sscanf_s(linea, "hud_y = %f", &hudY);
 			else if (strncmp(linea, "altura_marcador", 15) == 0)
 				sscanf_s(linea, "altura_marcador = %f", &alturaMarcador);
 			else if (strncmp(linea, "velocidad", 9) == 0)
-				sscanf_s(linea, "velocidad = %f", &velocidadCarrera);
+				sscanf_s(linea, "velocidad = %f", &velocidadBase);
 			else if (strncmp(linea, "aceleracion", 11) == 0)
-				sscanf_s(linea, "aceleracion = %f", &aceleracionCarrera);
+				sscanf_s(linea, "aceleracion = %f", &aceleracionBase);
 			else if (strncmp(linea, "resistencia", 11) == 0)
-				sscanf_s(linea, "resistencia = %f", &resistenciaCarrera);
+				sscanf_s(linea, "resistencia = %f", &resistenciaBase);
+			else if (strncmp(linea, "entrenamiento", 13) == 0)
+			{
+				char tipo[32] = "";
+				if (sscanf_s(linea, "entrenamiento = %31[^,], %f , %f",
+					tipo, (unsigned)sizeof(tipo), &x, &z) == 3)
+				{
+					PuntoEntrenamiento punto;
+					punto.pos = D3DXVECTOR2(x, z);
+					punto.usadoHoy = false;
+					if (strncmp(tipo, "velocidad", 9) == 0)			punto.tipo = 0;
+					else if (strncmp(tipo, "aceleracion", 11) == 0)	punto.tipo = 1;
+					else											punto.tipo = 2;
+					puntosEntrenamiento.push_back(punto);
+				}
+			}
 			else if (strncmp(linea, "aro", 3) == 0)
 			{
 				if (sscanf_s(linea, "aro = %f , %f", &x, &z) == 2)
@@ -751,6 +874,23 @@ public:
 				puntosRuta.push_back(D3DXVECTOR2(x, z));
 		}
 		fclose(archivo);
+
+		// Recupera el estado "usado hoy" de los puntos que ya existian
+		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
+		{
+			for (size_t j = 0; j < anteriores.size(); j++)
+			{
+				if (puntosEntrenamiento[i].tipo == anteriores[j].tipo &&
+					fabsf(puntosEntrenamiento[i].pos.x - anteriores[j].pos.x) < 0.02f &&
+					fabsf(puntosEntrenamiento[i].pos.y - anteriores[j].pos.y) < 0.02f)
+				{
+					puntosEntrenamiento[i].usadoHoy = anteriores[j].usadoHoy;
+					break;
+				}
+			}
+		}
+
+		RecalcularEstadisticas();
 
 		arosUsados.assign(arosResistencia.size(), false);
 		siguientePunto = 1;
@@ -839,15 +979,23 @@ public:
 		fprintf(archivo, "radio_meta = %.2f\n", radioMeta);
 		fprintf(archivo, "radio_punto = %.2f\n", radioPunto);
 		fprintf(archivo, "radio_aro = %.2f\n", radioAro);
+		fprintf(archivo, "radio_entrenamiento = %.2f\n", radioEntrenamiento);
 		fprintf(archivo, "hud_y = %.2f\n", hudY);
 		fprintf(archivo, "altura_marcador = %.2f\n", alturaMarcador);
-		fprintf(archivo, "velocidad = %.2f\n", velocidadCarrera);
-		fprintf(archivo, "aceleracion = %.2f\n", aceleracionCarrera);
-		fprintf(archivo, "resistencia = %.2f\n", resistenciaCarrera);
+		fprintf(archivo, "velocidad = %.2f\n", velocidadBase);
+		fprintf(archivo, "aceleracion = %.2f\n", aceleracionBase);
+		fprintf(archivo, "resistencia = %.2f\n", resistenciaBase);
 		for (size_t i = 0; i < puntosRuta.size(); i++)
 			fprintf(archivo, "%.2f, %.2f\n", puntosRuta[i].x, puntosRuta[i].y);
 		for (size_t i = 0; i < arosResistencia.size(); i++)
 			fprintf(archivo, "aro = %.2f, %.2f\n", arosResistencia[i].x, arosResistencia[i].y);
+		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
+		{
+			const char* tipo = (puntosEntrenamiento[i].tipo == 0) ? "velocidad"
+				: (puntosEntrenamiento[i].tipo == 1) ? "aceleracion" : "resistencia";
+			fprintf(archivo, "entrenamiento = %s, %.2f, %.2f\n", tipo,
+				puntosEntrenamiento[i].pos.x, puntosEntrenamiento[i].pos.y);
+		}
 		fclose(archivo);
 	}
 
@@ -885,10 +1033,237 @@ public:
 		qteActivo = true;
 	}
 
+	// Aplica las mejoras de entrenamiento sobre los valores base de ruta.txt.
+	// Cada entrenamiento suma +10% del valor base (aditivo). En aceleracion,
+	// mejorar significa tardar menos, asi que el tiempo baja un 10%.
+	void RecalcularEstadisticas()
+	{
+		velocidadCarrera = velocidadBase * (1.0f + 0.10f * mejorasVelocidad);
+
+		float factorAceleracion = 1.0f - 0.10f * mejorasAceleracion;
+		if (factorAceleracion < 0.2f)
+			factorAceleracion = 0.2f;
+		aceleracionCarrera = aceleracionBase * factorAceleracion;
+
+		resistenciaCarrera = resistenciaBase * (1.0f + 0.10f * mejorasResistencia);
+	}
+
+	const wchar_t* NombreSlot(int slot)
+	{
+		switch (slot)
+		{
+		case 0: return L"Ma\u00F1ana";
+		case 1: return L"D\u00EDa";
+		case 2: return L"Tarde";
+		default: return L"Noche";
+		}
+	}
+
+	// Luz fija de cada momento del dia. El angulo tambien lo usa el shader del
+	// cielo (g_DayAngle) para que el fondo combine con la iluminacion.
+	void AplicarLuzDelDia()
+	{
+		int slot = (diaActual >= 3) ? 1 : slotActual;	// dia de carrera = pleno dia
+
+		switch (slot)
+		{
+		case 0:		// mañana: sol bajo, tono calido
+			g_DayAngle = 0.55f;
+			light.ambient = D3DXVECTOR4(0.32f, 0.31f, 0.30f, 1.0f);
+			light.diffuse = D3DXVECTOR4(0.95f, 0.88f, 0.78f, 1.0f);
+			light.specular = D3DXVECTOR4(0.70f, 0.65f, 0.60f, 1.0f);
+			break;
+		case 1:		// dia: sol alto y blanco
+			g_DayAngle = 1.40f;
+			light.ambient = D3DXVECTOR4(0.40f, 0.40f, 0.40f, 1.0f);
+			light.diffuse = D3DXVECTOR4(1.00f, 1.00f, 1.00f, 1.0f);
+			light.specular = D3DXVECTOR4(1.00f, 1.00f, 1.00f, 1.0f);
+			break;
+		case 2:		// tarde: sol bajo, naranja
+			g_DayAngle = 2.90f;
+			light.ambient = D3DXVECTOR4(0.30f, 0.26f, 0.23f, 1.0f);
+			light.diffuse = D3DXVECTOR4(1.00f, 0.72f, 0.45f, 1.0f);
+			light.specular = D3DXVECTOR4(0.90f, 0.65f, 0.40f, 1.0f);
+			break;
+		default:	// noche: luz de luna azulada
+			g_DayAngle = 3.80f;
+			light.ambient = D3DXVECTOR4(0.16f, 0.17f, 0.24f, 1.0f);
+			light.diffuse = D3DXVECTOR4(0.12f, 0.13f, 0.22f, 1.0f);
+			light.specular = D3DXVECTOR4(0.05f, 0.05f, 0.08f, 1.0f);
+			break;
+		}
+
+		D3DXVECTOR3 sol(cosf(g_DayAngle), sinf(g_DayAngle), cosf(g_DayAngle) * 0.6f);
+		D3DXVec3Normalize(&sol, &sol);
+		light.direction = sol;
+	}
+
+	void MostrarBannerDia()
+	{
+		if (diaActual == 1)
+		{
+			bannerTitulo = L"D\u00EDa 1, Entrenamiento";
+			bannerSub = L"Faltan 2 d\u00EDas para la carrera";
+		}
+		else if (diaActual == 2)
+		{
+			bannerTitulo = L"D\u00EDa 2, Entrenamiento";
+			bannerSub = L"Falta 1 d\u00EDa para la carrera";
+		}
+		else
+		{
+			bannerTitulo = L"D\u00EDa de la Carrera";
+			bannerSub = L"Ve a la meta y pulsa E";
+		}
+
+		bannerTiempo = 5.0f;
+	}
+
+	// Termina el dia y arranca el siguiente (o el dia de la carrera)
+	void AvanzarDia()
+	{
+		diaActual++;
+		entrenamientosHoy = 0;
+		slotActual = 0;
+		tiempoMensajeEntrenamiento = 0.0f;
+
+		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
+			puntosEntrenamiento[i].usadoHoy = false;
+
+		AplicarLuzDelDia();
+		MostrarBannerDia();
+	}
+
+	// Completa una sesion de entrenamiento del tipo indicado
+	void Entrenar(int tipo)
+	{
+		if (tipo == 0)			mejorasVelocidad++;
+		else if (tipo == 1)		mejorasAceleracion++;
+		else					mejorasResistencia++;
+
+		RecalcularEstadisticas();
+
+		entrenamientosHoy++;
+		slotActual = entrenamientosHoy;
+
+		wchar_t buffer[192];
+		if (tipo == 0)
+			swprintf_s(buffer, L"Entrenamiento de velocidad completado!    Velocidad: %.1f", velocidadCarrera);
+		else if (tipo == 1)
+			swprintf_s(buffer, L"Entrenamiento de aceleraci\u00F3n completado!    Aceleraci\u00F3n: %.2f s", aceleracionCarrera);
+		else
+			swprintf_s(buffer, L"Entrenamiento de resistencia completado!    Resistencia: %.1f", resistenciaCarrera);
+
+		mensajeEntrenamiento = buffer;
+		tiempoMensajeEntrenamiento = 3.0f;
+
+		if (entrenamientosHoy >= 4)
+			AvanzarDia();
+		else
+			AplicarLuzDelDia();
+	}
+
+	// E junto a un punto de entrenamiento disponible
+	void IntentarEntrenar()
+	{
+		if (diaActual >= 3 || entrenamientosHoy >= 4)
+			return;
+
+		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
+		{
+			float dx = puntosEntrenamiento[i].pos.x - playerPos.x;
+			float dz = puntosEntrenamiento[i].pos.y - playerPos.z;
+
+			if (dx * dx + dz * dz > radioEntrenamiento * radioEntrenamiento)
+				continue;
+
+			if (puntosEntrenamiento[i].usadoHoy)
+				continue;
+
+			puntosEntrenamiento[i].usadoHoy = true;
+			Entrenar(puntosEntrenamiento[i].tipo);
+			return;
+		}
+	}
+
+	// HUD de los dias de entrenamiento: aviso cerca del punto y estado del dia
+	void ActualizarEntrenamiento()
+	{
+		if (tiempoMensajeEntrenamiento > 0.0f)
+		{
+			tiempoMensajeEntrenamiento -= deltaTime;
+			hudTexto = mensajeEntrenamiento;
+			return;
+		}
+
+		wchar_t buffer[256];
+
+		// Punto de entrenamiento mas cercano dentro del radio
+		int cerca = -1;
+		float mejorDistancia = radioEntrenamiento * radioEntrenamiento;
+		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
+		{
+			float dx = puntosEntrenamiento[i].pos.x - playerPos.x;
+			float dz = puntosEntrenamiento[i].pos.y - playerPos.z;
+			float distancia = dx * dx + dz * dz;
+
+			if (distancia <= mejorDistancia)
+			{
+				mejorDistancia = distancia;
+				cerca = (int)i;
+			}
+		}
+
+		if (cerca >= 0)
+		{
+			const wchar_t* nombre = (puntosEntrenamiento[cerca].tipo == 0) ? L"Velocidad"
+				: (puntosEntrenamiento[cerca].tipo == 1) ? L"Aceleraci\u00F3n" : L"Resistencia";
+
+			if (puntosEntrenamiento[cerca].usadoHoy)
+				swprintf_s(buffer, L"Ya entrenaste %s hoy.    Entrenamientos: %d/4",
+					nombre, entrenamientosHoy);
+			else
+				swprintf_s(buffer, L"Presiona E para entrenar: %s    (%d/4 hoy)",
+					nombre, entrenamientosHoy);
+
+			hudTexto = buffer;
+			return;
+		}
+
+		swprintf_s(buffer, L"D\u00EDa %d - %s    Entrenamientos: %d/4",
+			diaActual, NombreSlot(slotActual), entrenamientosHoy);
+		hudTexto = buffer;
+	}
+
+	// Estado inicial: dia 1 por la mañana
+	void IniciarDias()
+	{
+		diaActual = 1;
+		entrenamientosHoy = 0;
+		slotActual = 0;
+		mejorasVelocidad = 0;
+		mejorasAceleracion = 0;
+		mejorasResistencia = 0;
+		RecalcularEstadisticas();
+
+		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
+			puntosEntrenamiento[i].usadoHoy = false;
+
+		AplicarLuzDelDia();
+		MostrarBannerDia();
+	}
+
 	void ActualizarCarrera()
 	{
 		if (modoRuta || modoCamara)
 			return;
+
+		// Los dos primeros dias son de entrenamiento; la carrera es el tercero
+		if (diaActual < 3)
+		{
+			ActualizarEntrenamiento();
+			return;
+		}
 
 		if (estadoCarrera == CarreraSinRuta)
 		{
@@ -1054,9 +1429,9 @@ public:
 		{
 			// La cuenta regresiva se dibuja con fuente grande y centrada en pantalla
 			bool grande = (estadoCarrera == CarreraCuenta);
-			int ancho = grande ? 640 : hudAncho;
-			int alto = grande ? 360 : hudAlto;
-			int fuente = grande ? 240 : hudFuente;
+			int ancho = grande ? 640 : (modoRuta ? 1250 : hudAncho);
+			int alto = grande ? 360 : (modoRuta ? 190 : hudAlto);	// el editor usa 3 lineas
+			int fuente = grande ? 240 : (modoRuta ? 26 : hudFuente);
 
 			if (hudTexto != hudTextoDibujado || ancho != hudAnchoDibujado || alto != hudAltoDibujado)
 			{
@@ -1088,6 +1463,56 @@ public:
 			DibujarPanelEstadisticas();
 			DibujarQTE();
 		}
+
+		DibujarBanner();
+	}
+
+	// Aviso grande al empezar cada dia: titulo y subtitulo sobre un fondo
+	// semitransparente. Se queda 5 segundos y se va solo.
+	void DibujarBanner()
+	{
+		if (bannerTiempo <= 0.0f)
+			return;
+
+		bannerTiempo -= deltaTime;
+
+		const int anchoTitulo = 1100, altoTitulo = 160, fuenteTitulo = 96;
+		const int anchoSub = 1100, altoSub = 70, fuenteSub = 40;
+		const float anchoFondo = 1000.0f;
+		const float altoFondo = 250.0f;
+		float xFondo = (hudScreenW - anchoFondo) * 0.5f;
+		float yFondo = hudScreenH * 0.10f;
+
+		if (bannerTitulo != bannerTituloDibujado)
+		{
+			GenerarTextoBGRA(bannerTitulo.c_str(), anchoTitulo, altoTitulo, fuenteTitulo,
+				255, 255, 255, bannerPixelesTitulo);
+			hudBannerTitulo->SetTextureFromPixels((UINT)anchoTitulo, (UINT)altoTitulo,
+				bannerPixelesTitulo.data());
+			bannerTituloDibujado = bannerTitulo;
+		}
+
+		if (bannerSub != bannerSubDibujado)
+		{
+			GenerarTextoBGRA(bannerSub.c_str(), anchoSub, altoSub, fuenteSub,
+				230, 220, 190, bannerPixelesSub);
+			hudBannerSub->SetTextureFromPixels((UINT)anchoSub, (UINT)altoSub,
+				bannerPixelesSub.data());
+			bannerSubDibujado = bannerSub;
+		}
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		hudBannerFondo->DrawHUD(xFondo, yFondo, anchoFondo, altoFondo, hudScreenW, hudScreenH);
+		hudBannerTitulo->DrawHUD(xFondo + (anchoFondo - anchoTitulo) * 0.5f, yFondo + 24.0f,
+			(float)anchoTitulo, (float)altoTitulo, hudScreenW, hudScreenH);
+		hudBannerSub->DrawHUD(xFondo + (anchoFondo - anchoSub) * 0.5f,
+			yFondo + 24.0f + altoTitulo + 4.0f,
+			(float)anchoSub, (float)altoSub, hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
 
 	// Quick time event del aro: las 4 flechas de la secuencia arriba al centro y
@@ -1143,7 +1568,8 @@ public:
 	}
 
 	// Pinta un objeto con un color plano (textura 2x2 generada en CPU).
-	static void ColorPlano(MPrimitives* objeto, unsigned char r, unsigned char g, unsigned char b)
+	static void ColorPlano(MPrimitives* objeto, unsigned char r, unsigned char g, unsigned char b,
+		unsigned char a = 255)
 	{
 		unsigned char pixeles[16];
 		for (int i = 0; i < 4; i++)
@@ -1151,7 +1577,7 @@ public:
 			pixeles[i * 4 + 0] = b;
 			pixeles[i * 4 + 1] = g;
 			pixeles[i * 4 + 2] = r;
-			pixeles[i * 4 + 3] = 255;
+			pixeles[i * 4 + 3] = a;
 		}
 		objeto->SetTextureFromPixels(2, 2, pixeles);
 	}
@@ -1159,6 +1585,34 @@ public:
 	// Dibuja un anillo acostado en el suelo en cada punto del circuito.
 	void DibujarMarcadores()
 	{
+		// Puntos de entrenamiento: color segun la barra del HUD, gris si ya se uso hoy.
+		// El dia de la carrera ya no se muestran.
+		for (size_t i = 0; diaActual < 3 && i < puntosEntrenamiento.size(); i++)
+		{
+			bool usado = puntosEntrenamiento[i].usadoHoy;
+			MPrimitives* anillo = marcadorEntUsado;
+			if (!usado)
+			{
+				if (puntosEntrenamiento[i].tipo == 0)		anillo = marcadorEntVel;
+				else if (puntosEntrenamiento[i].tipo == 1)	anillo = marcadorEntAcel;
+				else										anillo = marcadorEntRes;
+			}
+
+			float radio = radioEntrenamiento;
+			if (!usado)
+				radio *= (1.0f + 0.06f * sinf(g_Time * 6.0f));	// late para llamar la atencion
+
+			float y = terreno->getTerrainCollision(puntosEntrenamiento[i].pos) + alturaMarcador;
+
+			D3DXMATRIX escala, rotX, traslacion;
+			D3DXMatrixScaling(&escala, radio, radio, radio);
+			D3DXMatrixRotationX(&rotX, -D3DX_PI * 0.5f);
+			D3DXMatrixTranslation(&traslacion, puntosEntrenamiento[i].pos.x, y, puntosEntrenamiento[i].pos.y);
+
+			anillo->UpdateScene(escala * rotX * traslacion);
+			anillo->DrawScene(camara);
+		}
+
 		if (puntosRuta.empty())
 			return;
 
@@ -1338,24 +1792,37 @@ public:
 		marcadorPunto = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorAro = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorAroUsado = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorEntVel = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorEntAcel = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorEntRes = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
+		marcadorEntUsado = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		hudFlecha = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudPanel = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		for (int i = 0; i < 4; i++)
 			hudQte[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudQteBarra = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudQteBarraFondo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudBannerFondo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudBannerTitulo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudBannerSub = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 
 		ColorPlano(marcadorMeta, 255, 200, 60);		// dorado
 		ColorPlano(marcadorSig, 80, 255, 120);		// verde
 		ColorPlano(marcadorPunto, 90, 160, 255);	// azul
 		ColorPlano(marcadorAro, 255, 80, 220);		// magenta: aro disponible
 		ColorPlano(marcadorAroUsado, 90, 90, 90);	// gris: aro ya usado
+		ColorPlano(marcadorEntVel, 80, 200, 255);	// cian: velocidad
+		ColorPlano(marcadorEntAcel, 255, 170, 60);	// naranja: aceleracion
+		ColorPlano(marcadorEntRes, 80, 230, 110);	// verde: resistencia
+		ColorPlano(marcadorEntUsado, 90, 90, 90);	// gris: ya entrenado hoy
 		ColorPlano(hudQteBarra, 255, 210, 70);		// amarillo: tiempo restante
 		ColorPlano(hudQteBarraFondo, 40, 45, 60);	// pista oscura
+		ColorPlano(hudBannerFondo, 15, 18, 28, 170);	// fondo semitransparente del aviso
 
 		srand((unsigned int)time(NULL));			// secuencias aleatorias del QTE
 
 		CargarRuta();
+		IniciarDias();
 		CargarVistas();
 		vKeyLast = false;
 		//esta es la gui
@@ -1471,39 +1938,8 @@ public:
 		rotPerFrame += deltaTime * 6.0f;
 		g_Time += deltaTime * 0.3f;
 
-		float dayAngle = g_Time * 0.1f;
-		float sunHeight = sin(dayAngle);
-
-		// 0 en el horizonte, 1 cuando el sol ya subio un poco,
-		// y se queda en 1 todo el mediodia, no solo en el cenit
-		float dayFactor = sunHeight / 0.3f;
-		if (dayFactor < 0.0f) dayFactor = 0.0f;
-		if (dayFactor > 1.0f) dayFactor = 1.0f;
-
-		D3DXVECTOR3 sunDir(cos(dayAngle), sin(dayAngle), cos(dayAngle) * 0.6f);
-		D3DXVec3Normalize(&sunDir, &sunDir);
-		light.direction = sunDir;
-
-		if (sunHeight <= 0.0f)
-		{
-			// Noche: sin sol, sin difusa y sin especular.
-			// Solo queda un poco de ambiente, como luz de luna.
-			light.ambient = D3DXVECTOR4(0.05f, 0.05f, 0.08f, 1.0f);
-			light.diffuse = D3DXVECTOR4(0.0f, 0.0f, 0.0f, 1.0f);
-			light.specular = D3DXVECTOR4(0.0f, 0.0f, 0.0f, 1.0f);
-		}
-		else
-		{
-			light.ambient = D3DXVECTOR4(0.10f + 0.30f * dayFactor,
-				0.10f + 0.30f * dayFactor,
-				0.10f + 0.30f * dayFactor, 1.0f);
-			light.diffuse = D3DXVECTOR4(0.15f + 0.85f * dayFactor,
-				0.15f + 0.85f * dayFactor,
-				0.15f + 0.85f * dayFactor, 1.0f);
-			light.specular = D3DXVECTOR4(dayFactor, dayFactor, dayFactor, 1.0f);
-		}
-
-
+		// La luz la fija el horario del entrenamiento (AplicarLuzDelDia),
+		// asi que aqui ya no hay ciclo automatico de dia y noche.
 
 
 		//Mis Modelos

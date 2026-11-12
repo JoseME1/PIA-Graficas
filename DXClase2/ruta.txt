@@ -3,6 +3,7 @@
 radio_meta = 9.00
 radio_punto = 9.00
 radio_aro = 6.00
+radio_entrenamiento = 6.00
 hud_y = 0.62
 altura_marcador = 0.35
 velocidad = 12.00
@@ -31,10 +32,15 @@ resistencia = 15.00
 79.46, 120.87
 90.19, 132.95
 127.07, 151.66
-aro = 182.20, 167.26
-aro = 202.39, 224.08
-aro = 147.03, 277.64
-aro = 57.59, 203.67
-aro = 55.66, 98.54
-aro = 143.67, 31.79
-aro = 97.38, 90.30
+aro = 199.40, 181.35
+aro = 196.88, 251.39
+aro = 147.19, 277.44
+aro = 72.06, 230.35
+aro = 48.89, 134.62
+aro = 74.24, 68.53
+aro = 124.82, 31.88
+aro = 123.74, 69.13
+aro = 86.44, 126.26
+entrenamiento = velocidad, 229.47, 169.36
+entrenamiento = aceleracion, 230.46, 155.45
+entrenamiento = resistencia, 231.65, 138.71

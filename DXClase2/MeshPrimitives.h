@@ -1419,6 +1419,7 @@ public:
 
 		consBuffPS.light = light;
 		consBuffPS.Time = g_Time;
+		consBuffPS.pad[0] = g_DayAngle;
 		d3d11DevCon->UpdateSubresource(cbBufferPS, 0, NULL, &consBuffPS, 0, 0);
 		d3d11DevCon->PSSetConstantBuffers(0, 1, &cbBufferPS);
 

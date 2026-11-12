@@ -29,7 +29,7 @@ float4 PS(VS_OUTPUT input) : SV_Target
     float3 dir = normalize(-input.viewDirection);
     float h = dir.y;
 
-    float dayAngle = Time * 0.1f;
+    float dayAngle = pad.x;
     float sunHeight = sin(dayAngle);
     float dayFactor = saturate(sunHeight / 0.3f);
 
