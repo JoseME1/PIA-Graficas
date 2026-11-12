@@ -212,7 +212,7 @@ private:
 	int posicionFuente = 96;
 	int rangoDibujado = -1;
 
-	// Quick time event del aro: 4 flechas aleatorias en 3 segundos.
+	// Quick time event del aro: 4 flechas aleatorias en 1.5 segundos.
 	// 0 = arriba, 1 = derecha, 2 = abajo, 3 = izquierda
 	bool qteActivo = false;
 	int qteSecuencia[4] = { 0, 0, 0, 0 };
@@ -1063,7 +1063,7 @@ public:
 	}
 
 	// Lanza el quick time event de un aro: 4 flechas al azar (se pueden repetir)
-	// y 3 segundos para pulsarlas en orden.
+	// y 1.5 segundos para pulsarlas en orden.
 	void IniciarQTE()
 	{
 		for (int i = 0; i < 4; i++)
@@ -1074,7 +1074,7 @@ public:
 		}
 
 		qteProgreso = 0;
-		qteTiempo = 3.0f;
+		qteTiempo = 1.5f;
 		qteActivo = true;
 	}
 
@@ -1759,7 +1759,7 @@ public:
 	}
 
 	// Quick time event del aro: las 4 flechas de la secuencia arriba al centro y
-	// una barra que se encoge con el contrarreloj de 3 segundos.
+	// una barra que se encoge con el contrarreloj de 1.5 segundos.
 	void DibujarQTE()
 	{
 		if (!qteActivo)
@@ -1798,7 +1798,7 @@ public:
 		// Contrarreloj: pista oscura y relleno que se encoge
 		float barraAlto = 14.0f;
 		float barraY = y + lado + 16.0f;
-		float fraccion = qteTiempo / 3.0f;
+		float fraccion = qteTiempo / 1.5f;
 		if (fraccion < 0.0f) fraccion = 0.0f;
 		if (fraccion > 1.0f) fraccion = 1.0f;
 
@@ -2097,8 +2097,8 @@ public:
 			L"Calaca Elite", L"Calaca Experimentada",
 			L"Calaca Aficionado", L"Calaca Principiante"
 		};
-		float porcentajesIA[4] = { 0.100f, 0.075f, 0.050f, 0.025f };
-		float probabilidadesIA[4] = { 0.70f, 0.50f, 0.40f, 0.30f };
+		float porcentajesIA[4] = { 0.150f, 0.120f, 0.100f, 0.100f };
+		float probabilidadesIA[4] = { 0.95f, 0.80f, 0.65f, 0.50f };
 
 		for (int i = 0; i < 4; i++)
 		{
@@ -2471,15 +2471,20 @@ public:
 		{
 			calaca->DrawScene(camara);
 
-			// Diamante verde flotando sobre la cabeza de la calaca del jugador
-			D3DXMATRIX escalaDiamante, rotDiamante, lugarDiamante;
-			float reboteDiamante = autoCorriendo ? fabsf(sinf(g_Time * 60.0f)) * 0.4f : 0.0f;
-			D3DXMatrixScaling(&escalaDiamante, 0.45f, 0.85f, 0.45f);
-			D3DXMatrixRotationY(&rotDiamante, g_Time * 2.5f);
-			D3DXMatrixTranslation(&lugarDiamante, playerPos.x,
-				playerPos.y + 4.05f + reboteDiamante, playerPos.z);
-			diamanteJugador->UpdateScene(escalaDiamante * rotDiamante * lugarDiamante);
-			diamanteJugador->DrawScene(camara);
+			// Diamante verde flotando sobre la cabeza de la calaca del jugador,
+			// solo mientras dura la carrera.
+			if (estadoCarrera == CarreraCuenta || estadoCarrera == CarreraCorriendo ||
+				estadoCarrera == CarreraTerminada)
+			{
+				D3DXMATRIX escalaDiamante, rotDiamante, lugarDiamante;
+				float reboteDiamante = autoCorriendo ? fabsf(sinf(g_Time * 60.0f)) * 0.4f : 0.0f;
+				D3DXMatrixScaling(&escalaDiamante, 0.45f, 0.85f, 0.45f);
+				D3DXMatrixRotationY(&rotDiamante, g_Time * 2.5f);
+				D3DXMatrixTranslation(&lugarDiamante, playerPos.x,
+					playerPos.y + 4.05f + reboteDiamante, playerPos.z);
+				diamanteJugador->UpdateScene(escalaDiamante * rotDiamante * lugarDiamante);
+				diamanteJugador->DrawScene(camara);
+			}
 		}
 		calaca2->DrawScene(camara);
 
