@@ -19,6 +19,46 @@ HWND hwnd = NULL;
 const int Width = 1920;
 const int Height = 1080;
 
+// Pantalla completa sin bordes (F11): la ventana cubre el monitor y la barra de
+// tareas queda detras. El backbuffer ya es de 1920x1080, asi que no hay que
+// redimensionar el swapchain.
+static bool pantallaCompleta = false;
+static bool f11Presionada = false;
+static RECT ventanaAnterior;
+static LONG_PTR estiloAnterior = 0;
+
+void AlternarPantallaCompleta(HWND hWnd)
+{
+	if (!pantallaCompleta)
+	{
+		GetWindowRect(hWnd, &ventanaAnterior);
+		estiloAnterior = GetWindowLongPtr(hWnd, GWL_STYLE);
+
+		MONITORINFO mi;
+		ZeroMemory(&mi, sizeof(mi));
+		mi.cbSize = sizeof(mi);
+		GetMonitorInfo(MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST), &mi);
+
+		SetWindowLongPtr(hWnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+		SetWindowPos(hWnd, HWND_TOP,
+			mi.rcMonitor.left, mi.rcMonitor.top,
+			mi.rcMonitor.right - mi.rcMonitor.left,
+			mi.rcMonitor.bottom - mi.rcMonitor.top,
+			SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+		pantallaCompleta = true;
+	}
+	else
+	{
+		SetWindowLongPtr(hWnd, GWL_STYLE, estiloAnterior);
+		SetWindowPos(hWnd, NULL,
+			ventanaAnterior.left, ventanaAnterior.top,
+			ventanaAnterior.right - ventanaAnterior.left,
+			ventanaAnterior.bottom - ventanaAnterior.top,
+			SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOOWNERZORDER);
+		pantallaCompleta = false;
+	}
+}
+
 DXRender *dxrender;
 
 //Function Prototypes//
@@ -185,6 +225,15 @@ LRESULT CALLBACK WndProc(HWND hwnd,
 		if (wParam == VK_ESCAPE){
 			DestroyWindow(hwnd);
 		}
+		if (wParam == VK_F11 && !f11Presionada){
+			f11Presionada = true;
+			AlternarPantallaCompleta(hwnd);
+		}
+		return 0;
+
+	case WM_KEYUP:
+		if (wParam == VK_F11)
+			f11Presionada = false;
 		return 0;
 
 	case WM_ACTIVATEAPP:

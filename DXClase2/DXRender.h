@@ -1049,7 +1049,7 @@ public:
 		}
 
 		float x = hudScreenW - panelAncho - 24.0f;
-		float y = hudScreenH - panelAlto - 24.0f;
+		float y = hudScreenH - panelAlto - 90.0f;	// arriba de la barra de tareas
 
 		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
 		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
