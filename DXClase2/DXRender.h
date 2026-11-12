@@ -7,6 +7,7 @@
 #include "Light.h"
 #include "MeshPrimitives.h"
 #include "AudioManager.h"
+#include "Texto.h"
 
 
 #include <Xinput.h>
@@ -74,6 +75,31 @@ private:
 	Camara *skyCamara;
 	AudioManager audio;
 	float audioVolume = 0.2f;
+
+	// HUD de texto en pantalla
+	MPrimitives* hudQuad = nullptr;
+	ID3D11BlendState* alphaBlendState = nullptr;
+	std::wstring hudTexto;
+	std::wstring hudTextoDibujado;
+	std::vector<unsigned char> hudPixeles;
+	int hudAncho = 1000;
+	int hudAlto = 120;
+	int hudFuente = 30;
+	int hudScreenW = 1920;
+	int hudScreenH = 1080;
+
+	// Circuito de la carrera (punto 0 = meta, el resto = checkpoints en orden)
+	enum EstadoCarrera { CarreraSinRuta, CarreraEsperando, CarreraCorriendo, CarreraTerminada };
+	std::vector<D3DXVECTOR2> puntosRuta;
+	EstadoCarrera estadoCarrera = CarreraSinRuta;
+	int siguientePunto = 1;
+	float tiempoMensaje = 0.0f;
+	float radioMeta = 9.0f;
+	float radioPunto = 9.0f;
+
+	// Modo de captura de ruta
+	bool modoRuta = false;
+	bool f2Last = false, pLast = false, backLast = false, eLast = false;
 
 
 	float rotPerFrame;
@@ -349,6 +375,56 @@ public:
 				PostQuitMessage(0);
 		}
 
+		// Modo de captura de ruta: F2 lo activa, P agrega el punto actual, Retroceso borra el ultimo
+		bool f2Down = (keyboardState[DIK_F2] != 0);
+		if (f2Down && !f2Last)
+		{
+			modoRuta = !modoRuta;
+			if (!modoRuta)
+				CargarRuta();	// al salir, recarga el circuito para poder correrlo sin reiniciar
+		}
+		f2Last = f2Down;
+
+		if (modoRuta)
+		{
+			bool pDown = (keyboardState[DIK_P] != 0);
+			if (pDown && !pLast)
+			{
+				puntosRuta.push_back(D3DXVECTOR2(playerPos.x, playerPos.z));
+				GuardarRuta();
+			}
+			pLast = pDown;
+
+			bool backDown = (keyboardState[DIK_BACK] != 0);
+			if (backDown && !backLast && !puntosRuta.empty())
+			{
+				puntosRuta.pop_back();
+				GuardarRuta();
+			}
+			backLast = backDown;
+
+			wchar_t buffer[320];
+			swprintf_s(buffer,
+				L"Modo ruta: %d puntos    [P] agregar    [Retroceso] borrar    [F2] salir\n"
+				L"Posicion:  X %.1f   Z %.1f",
+				(int)puntosRuta.size(), playerPos.x, playerPos.z);
+			hudTexto = buffer;
+		}
+
+		// Arrancar la carrera con E junto a la meta
+		bool eDown = (keyboardState[DIK_E] != 0);
+		if (eDown && !eLast && !modoRuta && estadoCarrera == CarreraEsperando)
+		{
+			float dx = playerPos.x - puntosRuta[0].x;
+			float dz = playerPos.z - puntosRuta[0].y;
+			if (dx * dx + dz * dz <= radioMeta * radioMeta)
+			{
+				estadoCarrera = CarreraCorriendo;
+				siguientePunto = 1;
+			}
+		}
+		eLast = eDown;
+
 		bool vDown = (keyboardState[DIK_V] != 0);
 		if (vDown && !vKeyLast) thirdPerson = !thirdPerson;
 		vKeyLast = vDown;
@@ -366,6 +442,8 @@ public:
 			playerPos.z = camara->Position.z;
 		}
 		skyCamara->setSkyCamara(camara);
+
+		ActualizarCarrera();
 	}
 
 	void ReleaseObjects()
@@ -377,6 +455,136 @@ public:
 		d3d11DevCon->Release();
 		renderTargetView->Release();
 		depthStencilView->Release();
+	}
+
+	// Lee el circuito desde ruta.txt: una linea por punto, "x, z".
+	// La primera linea es la meta, las demas son los checkpoints en orden.
+	void CargarRuta()
+	{
+		puntosRuta.clear();
+
+		FILE* archivo = NULL;
+		if (fopen_s(&archivo, "ruta.txt", "r") != 0 || archivo == NULL)
+		{
+			estadoCarrera = CarreraSinRuta;
+			return;
+		}
+
+		char linea[256];
+		while (fgets(linea, sizeof(linea), archivo) != NULL)
+		{
+			float x = 0.0f;
+			float z = 0.0f;
+			if (sscanf_s(linea, "%f , %f", &x, &z) == 2)
+				puntosRuta.push_back(D3DXVECTOR2(x, z));
+		}
+		fclose(archivo);
+
+		siguientePunto = 1;
+		estadoCarrera = (puntosRuta.size() >= 2) ? CarreraEsperando : CarreraSinRuta;
+	}
+
+	void GuardarRuta()
+	{
+		FILE* archivo = NULL;
+		if (fopen_s(&archivo, "ruta.txt", "w") != 0 || archivo == NULL)
+			return;
+
+		fprintf(archivo, "# Circuito: la primera linea es la meta, luego los checkpoints en orden.\n");
+		fprintf(archivo, "# Generado dentro del juego con F2 + P.\n");
+		for (size_t i = 0; i < puntosRuta.size(); i++)
+			fprintf(archivo, "%.2f, %.2f\n", puntosRuta[i].x, puntosRuta[i].y);
+		fclose(archivo);
+	}
+
+	void ActualizarCarrera()
+	{
+		if (modoRuta)
+			return;
+
+		if (estadoCarrera == CarreraSinRuta)
+		{
+			hudTexto.clear();
+			return;
+		}
+
+		if (estadoCarrera == CarreraEsperando)
+		{
+			float dx = playerPos.x - puntosRuta[0].x;
+			float dz = playerPos.z - puntosRuta[0].y;
+			if (dx * dx + dz * dz <= radioMeta * radioMeta)
+				hudTexto = L"Presiona  E  para empezar la carrera";
+			else
+				hudTexto.clear();
+		}
+		else if (estadoCarrera == CarreraCorriendo)
+		{
+			float dx = playerPos.x - puntosRuta[siguientePunto].x;
+			float dz = playerPos.z - puntosRuta[siguientePunto].y;
+
+			if (dx * dx + dz * dz <= radioPunto * radioPunto)
+			{
+				siguientePunto++;
+
+				if (siguientePunto >= (int)puntosRuta.size())
+				{
+					estadoCarrera = CarreraTerminada;
+					tiempoMensaje = 6.0f;
+				}
+			}
+
+			if (estadoCarrera == CarreraCorriendo)
+			{
+				wchar_t buffer[128];
+				swprintf_s(buffer, L"Punto %d de %d", siguientePunto, (int)puntosRuta.size() - 1);
+				hudTexto = buffer;
+			}
+			else
+			{
+				hudTexto = L"Carrera terminada!";
+			}
+		}
+		else if (estadoCarrera == CarreraTerminada)
+		{
+			tiempoMensaje -= deltaTime;
+
+			if (tiempoMensaje <= 0.0f)
+			{
+				estadoCarrera = CarreraEsperando;
+				siguientePunto = 1;
+				hudTexto.clear();
+			}
+			else
+			{
+				hudTexto = L"Carrera terminada!";
+			}
+		}
+	}
+
+	void DibujarHUD()
+	{
+		if (hudTexto.empty())
+		{
+			hudTextoDibujado.clear();
+			return;
+		}
+
+		if (hudTexto != hudTextoDibujado)
+		{
+			GenerarTextoBGRA(hudTexto.c_str(), hudAncho, hudAlto, hudFuente, 255, 255, 255, hudPixeles);
+			hudQuad->SetTextureFromPixels((UINT)hudAncho, (UINT)hudAlto, hudPixeles.data());
+			hudTextoDibujado = hudTexto;
+		}
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		float x = (hudScreenW - hudAncho) * 0.5f;
+		float y = hudScreenH * 0.62f;
+		hudQuad->DrawHUD(x, y, (float)hudAncho, (float)hudAlto, hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
 
 	bool InitScene(int Width, int Height)
@@ -413,6 +621,25 @@ public:
 		skyCamara = new Camara(Position,Target,Up, Width, Height);
 		playerPos = D3DXVECTOR3(150.0f, 0.0f, 200.0f);
 		thirdPerson = false;
+
+		// HUD de texto y estado del circuito
+		hudScreenW = Width;
+		hudScreenH = Height;
+		hudQuad = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+
+		D3D11_BLEND_DESC blendDesc;
+		ZeroMemory(&blendDesc, sizeof(blendDesc));
+		blendDesc.RenderTarget[0].BlendEnable = TRUE;
+		blendDesc.RenderTarget[0].SrcBlend = D3D11_BLEND_SRC_ALPHA;
+		blendDesc.RenderTarget[0].DestBlend = D3D11_BLEND_INV_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+		blendDesc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_INV_SRC_ALPHA;
+		blendDesc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+		blendDesc.RenderTarget[0].RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+		d3d11Device->CreateBlendState(&blendDesc, &alphaBlendState);
+
+		CargarRuta();
 		vKeyLast = false;
 		//esta es la gui
 		Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
@@ -738,6 +965,8 @@ public:
 				debugBox->DrawScene(camara);
 			}
 		}
+
+		DibujarHUD();
 
 		//Present the backbuffer to the screen
 		HRESULT hr = SwapChain->Present(1, 0);

@@ -22,6 +22,7 @@ private:
 	ID3D11ShaderResourceView* Texture = nullptr;
 	ID3D11ShaderResourceView* Texture2 = nullptr;
 	ID3D11ShaderResourceView* NormalTexture = nullptr;
+	ID3D11ShaderResourceView* ownTexture = nullptr;
 	ID3D11SamplerState* TexSamplerState;
 
 	//Bitmap
@@ -196,14 +197,14 @@ public:
 		createBillboard();
 	}
 
-	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Height, float Width, LPCWSTR texturePath, Camara* camara){
+	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Height, float Width, LPCWSTR texturePath, Camara* camara, int ShaderType = ShaderGUI){
 
 
 		
 		this->Height = Height;
 		this->Width = Width;
 
-		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderGUI);
+		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderType);
 		createBitMap(camara);
 	}
 
@@ -227,6 +228,32 @@ public:
 
 		cache[key] = srv;
 		return srv;
+	}
+
+	// Compila cada shader una sola vez y comparte el blob compilado entre todas las instancias
+	// (cada archivo .vs/.ps de este proyecto tiene un solo entry point).
+	static ID3D10Blob* CompileShaderCached(LPCWSTR file, LPCSTR entry, LPCSTR target)
+	{
+		static std::map<std::wstring, ID3D10Blob*> cache;
+		std::wstring key(file);
+
+		std::map<std::wstring, ID3D10Blob*>::iterator it = cache.find(key);
+		if (it != cache.end())
+			return it->second;
+
+		ID3D10Blob* blob = nullptr;
+		ID3D10Blob* errors = nullptr;
+
+		if (FAILED(D3DX11CompileFromFile(file, 0, 0, entry, target, 0, 0, 0, &blob, &errors, 0)))
+		{
+			MessageBoxA(NULL, errors ? (char*)errors->GetBufferPointer() : "Error al compilar el shader",
+				"Error de shader", MB_OK | MB_ICONERROR);
+			if (errors) errors->Release();
+			ExitProcess(1);
+		}
+
+		cache[key] = blob;
+		return blob;
 	}
 
 	bool InitScene(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
@@ -274,27 +301,18 @@ public:
 		case ShaderPasto:
 			vertexShaderFile = L"vertexShaderPasto.vs";
 			break;
+		case ShaderTexto:
+			pixelShaderFile = L"pixelShaderTexto.ps";
+			break;
 		default:
 			break;
 		}
 
 		
 
-		//Compile Shaders from shader file
-		D3DX11CompileFromFile(vertexShaderFile, 0, 0, "VS", "vs_4_0", 0, 0, 0, &VS_Buffer, 0, 0);
-		D3DX11CompileFromFile(pixelShaderFile, 0, 0, "PS", "ps_4_0", 0, 0, 0, &PS_Buffer, 0, 0);
-
-		//DEBUG PARA EXCEPCIONES DE PIXEL SHADER, DESCOMENTAR EN CASO DE EXCEPCION
-		/*ID3D10Blob* errorBlob = nullptr;
-		HRESULT hrVS = D3DX11CompileFromFile(L"vertexShader.vs", 0, 0, "VS", "vs_4_0", 0, 0, 0, &VS_Buffer, &errorBlob, 0);
-		if (FAILED(hrVS) && errorBlob)
-			MessageBoxA(NULL, (char*)errorBlob->GetBufferPointer(), "Error VS", MB_OK);
-
-		errorBlob = nullptr;
-		HRESULT hrPS = D3DX11CompileFromFile(pixelShaderFile, 0, 0, "PS", "ps_4_0", 0, 0, 0, &PS_Buffer, &errorBlob, 0);
-		if (FAILED(hrPS) && errorBlob)
-			MessageBoxA(NULL, (char*)errorBlob->GetBufferPointer(), "Error PS", MB_OK);
-		*/
+		//Compile Shaders from shader file (cacheados: cada shader se compila una sola vez)
+		VS_Buffer = CompileShaderCached(vertexShaderFile, "VS", "vs_4_0");
+		PS_Buffer = CompileShaderCached(pixelShaderFile, "PS", "ps_4_0");
 
 
 		//Create the Shader Objects
@@ -1441,6 +1459,79 @@ public:
 		d3d11DevCon->PSSetSamplers(0, 1, &TexSamplerState);
 
 		//Dibujamos el bitmap
+		d3d11DevCon->DrawIndexed(numIndex, 0, 0);
+	}
+
+	// Reemplaza la textura del quad por una generada en CPU (BGRA, fila superior primero).
+	// No libera la textura anterior si vino de la cache compartida: solo la propia.
+	void SetTextureFromPixels(UINT w, UINT h, const unsigned char* bgra)
+	{
+		D3D11_TEXTURE2D_DESC td;
+		ZeroMemory(&td, sizeof(td));
+		td.Width = w;
+		td.Height = h;
+		td.MipLevels = 1;
+		td.ArraySize = 1;
+		td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+		td.SampleDesc.Count = 1;
+		td.Usage = D3D11_USAGE_IMMUTABLE;
+		td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+		D3D11_SUBRESOURCE_DATA sd;
+		ZeroMemory(&sd, sizeof(sd));
+		sd.pSysMem = bgra;
+		sd.SysMemPitch = w * 4;
+
+		ID3D11Texture2D* tex = nullptr;
+		if (FAILED(d3d11Device->CreateTexture2D(&td, &sd, &tex)))
+			return;
+
+		ID3D11ShaderResourceView* srv = nullptr;
+		d3d11Device->CreateShaderResourceView(tex, NULL, &srv);
+		tex->Release();
+
+		if (ownTexture != nullptr)
+			ownTexture->Release();
+
+		ownTexture = srv;
+		Texture = ownTexture;
+	}
+
+	// Dibuja el quad en un rectangulo de pantalla en pixeles (origen arriba-izquierda).
+	// El quad de createBitMap mide 2*Width por 2*Height unidades.
+	void DrawHUD(float x, float y, float w, float h, int screenW, int screenH)
+	{
+		float ndcW = 2.0f * w / (float)screenW;
+		float ndcH = 2.0f * h / (float)screenH;
+		float ndcX = 2.0f * (x + w * 0.5f) / (float)screenW - 1.0f;
+		float ndcY = 1.0f - 2.0f * (y + h * 0.5f) / (float)screenH;
+
+		D3DXMATRIX escala, traslacion, identidad;
+		D3DXMatrixScaling(&escala, ndcW / (2.0f * Width), ndcH / (2.0f * Height), 1.0f);
+		D3DXMatrixTranslation(&traslacion, ndcX, ndcY, 0.5f);
+		D3DXMatrixIdentity(&identidad);
+
+		D3DXMATRIX WorldViewProjection = escala * traslacion;
+
+		D3DXMatrixTranspose(&consBuff.WorldViewProjection, &WorldViewProjection);
+		D3DXMatrixTranspose(&consBuff.World, &identidad);
+		consBuff.CameraPos = D3DXVECTOR3(0.0f, 0.0f, -1.0f);
+		consBuff.Time = g_Time;
+		d3d11DevCon->UpdateSubresource(cbBuffer, 0, NULL, &consBuff, 0, 0);
+		d3d11DevCon->VSSetConstantBuffers(0, 1, &cbBuffer);
+
+		d3d11DevCon->VSSetShader(VS, 0, 0);
+		d3d11DevCon->PSSetShader(PS, 0, 0);
+		d3d11DevCon->IASetInputLayout(vertLayout);
+		d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		UINT stride = sizeof(SimpleVertex);
+		UINT offset = 0;
+		d3d11DevCon->IASetVertexBuffers(0, 1, &VertexBuffer, &stride, &offset);
+		d3d11DevCon->IASetIndexBuffer(IndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+
+		d3d11DevCon->PSSetShaderResources(0, 1, &Texture);
+		d3d11DevCon->PSSetSamplers(0, 1, &TexSamplerState);
 		d3d11DevCon->DrawIndexed(numIndex, 0, 0);
 	}
 
