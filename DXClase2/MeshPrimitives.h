@@ -103,6 +103,17 @@ public:
 		
 	}
 
+	// Octaedro (diamante) de tamano 1: se escala con UpdateScene. Se usa para el
+	// indicador verde sobre la calaca del jugador.
+	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, LPCWSTR texturePath, int ShaderType)
+	{
+		this->Size = 1.0f;
+		light.specularPower = 2;
+
+		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderType);
+		createOctahedron();
+	}
+
 	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, int Stacks, int Slices, float Radius, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
 	{
 		PrimitiveBoundings = new SphereBoundingInfo();
@@ -555,6 +566,98 @@ public:
 		d3d11Device->CreateBuffer(&indexBufferDesc,
 			&iinitData,
 			&IndexBuffer);
+	}
+
+	void createOctahedron()
+	{
+		D3DXVECTOR3 arriba(0.0f, 0.5f, 0.0f);
+		D3DXVECTOR3 abajo(0.0f, -0.5f, 0.0f);
+		D3DXVECTOR3 ecuador[4] = {
+			D3DXVECTOR3(0.5f, 0.0f, 0.0f),
+			D3DXVECTOR3(0.0f, 0.0f, 0.5f),
+			D3DXVECTOR3(-0.5f, 0.0f, 0.0f),
+			D3DXVECTOR3(0.0f, 0.0f, -0.5f)
+		};
+
+		// 4 caras hacia arriba y 4 hacia abajo, con vertices propios en cada cara
+		// para que la normal por cara de el aspecto facetado de un diamante.
+		SimpleVertex vertex[24];
+		DWORD indices[24];
+		int v = 0;
+
+		for (int cara = 0; cara < 8; cara++)
+		{
+			D3DXVECTOR3 a, b, c;
+			if (cara < 4)
+			{
+				a = arriba;
+				b = ecuador[cara];
+				c = ecuador[(cara + 1) % 4];
+			}
+			else
+			{
+				a = abajo;
+				b = ecuador[(cara + 1) % 4];
+				c = ecuador[cara % 4];
+			}
+
+			D3DXVECTOR3 normal;
+			D3DXVECTOR3 e1 = b - a;
+			D3DXVECTOR3 e2 = c - a;
+			D3DXVec3Cross(&normal, &e1, &e2);
+			D3DXVec3Normalize(&normal, &normal);
+
+			// La normal debe apuntar hacia afuera del octaedro
+			D3DXVECTOR3 centro = (a + b + c) / 3.0f;
+			if (D3DXVec3Dot(&normal, &centro) < 0.0f)
+			{
+				D3DXVECTOR3 temporal = b;
+				b = c;
+				c = temporal;
+				normal = -normal;
+			}
+
+			D3DXVECTOR3 caras[3] = { a, b, c };
+			for (int i = 0; i < 3; i++)
+			{
+				vertex[v].pos = caras[i];
+				vertex[v].tex = D3DXVECTOR2(0.5f + caras[i].x, 0.5f + caras[i].z);
+				vertex[v].normal = normal;
+				indices[v] = v;
+				v++;
+			}
+		}
+
+		numVertex = 24;
+		numIndex = 24;
+		setTangentBinormal(vertex, indices, 3);
+
+		D3D11_BUFFER_DESC vertexBufferDesc;
+		ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
+
+		vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+		vertexBufferDesc.ByteWidth = sizeof(SimpleVertex)* numVertex;
+		vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		vertexBufferDesc.CPUAccessFlags = 0;
+		vertexBufferDesc.MiscFlags = 0;
+
+		D3D11_SUBRESOURCE_DATA vertexBufferData;
+		ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
+		vertexBufferData.pSysMem = vertex;
+		d3d11Device->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &VertexBuffer);
+
+		D3D11_BUFFER_DESC indexBufferDesc;
+		ZeroMemory(&indexBufferDesc, sizeof(indexBufferDesc));
+
+		indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+		indexBufferDesc.ByteWidth = sizeof(DWORD)* numIndex;
+		indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+		indexBufferDesc.CPUAccessFlags = 0;
+		indexBufferDesc.MiscFlags = 0;
+
+		D3D11_SUBRESOURCE_DATA iinitData;
+		iinitData.pSysMem = indices;
+		d3d11Device->CreateBuffer(&indexBufferDesc, &iinitData, &IndexBuffer);
 	}
 
 	void createSphere()
