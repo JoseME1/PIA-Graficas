@@ -108,6 +108,22 @@ private:
 	bool modoRuta = false;
 	bool f2Last = false, pLast = false, backLast = false, eLast = false;
 
+	// Vistas de camara para la carrera: la vista 1 se usa mientras la calaca va
+	// hacia el checkpoint 1, la 2 hacia el checkpoint 2, y asi. Si hay mas
+	// checkpoints que vistas, el resto se ve en tercera persona.
+	struct VistaCamara
+	{
+		D3DXVECTOR3 pos;
+		float yaw;
+		float pitch;
+	};
+	std::vector<VistaCamara> vistasCamara;
+	bool modoCamara = false;
+	bool f3Last = false;
+	bool vistasSeguir = true;			// la camara mira siempre a la calaca
+	float velocidadVuelo = 20.0f;		// velocidad de la camara libre (unidades/s)
+	float yawCalaca = 0.0f;				// hacia donde corre la calaca en la carrera automatica
+
 	// Marcadores del circuito dibujados en el mundo
 	MPrimitives* marcadorMeta = nullptr;	// anillo dorado en la meta
 	MPrimitives* marcadorSig = nullptr;		// anillo verde en el siguiente punto
@@ -323,7 +339,7 @@ public:
 			ZeroMemory(keyboardState, sizeof(keyboardState));
 		}
 
-		float speed = 20.0f * deltaTime;
+		float speed = (modoCamara ? velocidadVuelo : 20.0f) * deltaTime;
 
 		float moveLeftRight = 0;
 		float moveBackForward = 0;
@@ -397,13 +413,58 @@ public:
 
 		// Modo de captura de ruta: F2 lo activa, P agrega el punto actual, Retroceso borra el ultimo
 		bool f2Down = (keyboardState[DIK_F2] != 0);
-		if (f2Down && !f2Last)
+		if (f2Down && !f2Last && !modoCamara)
 		{
 			modoRuta = !modoRuta;
 			if (!modoRuta)
 				CargarRuta();	// al salir, recarga el circuito para poder correrlo sin reiniciar
 		}
 		f2Last = f2Down;
+
+		// Modo editor de vistas de camara: F3 lo activa (vuelo libre), P guarda la
+		// vista actual como la del siguiente tramo y Retroceso borra la ultima.
+		bool f3Down = (keyboardState[DIK_F3] != 0);
+		if (f3Down && !f3Last && !modoRuta)
+		{
+			if (modoCamara)
+			{
+				modoCamara = false;
+				GuardarVistas();
+			}
+			else if (estadoCarrera != CarreraCuenta && !autoCorriendo)
+				modoCamara = true;
+		}
+		f3Last = f3Down;
+
+		if (modoCamara)
+		{
+			bool pDown = (keyboardState[DIK_P] != 0);
+			if (pDown && !pLast)
+			{
+				VistaCamara vista;
+				vista.pos = camara->Position;
+				vista.yaw = camara->Yaw;
+				vista.pitch = camara->Pitch;
+				vistasCamara.push_back(vista);
+				GuardarVistas();
+			}
+			pLast = pDown;
+
+			bool backDown = (keyboardState[DIK_BACK] != 0);
+			if (backDown && !backLast && !vistasCamara.empty())
+			{
+				vistasCamara.pop_back();
+				GuardarVistas();
+			}
+			backLast = backDown;
+
+			wchar_t buffer[320];
+			swprintf_s(buffer,
+				L"Modo camara: %d vistas    [P] agregar    [Retroceso] borrar    [Espacio/Ctrl] subir/bajar    [F3] salir\n"
+				L"Camara:  X %.1f   Y %.1f   Z %.1f",
+				(int)vistasCamara.size(), camara->Position.x, camara->Position.y, camara->Position.z);
+			hudTexto = buffer;
+		}
 
 		if (modoRuta)
 		{
@@ -433,7 +494,7 @@ public:
 
 		// Arrancar la carrera con E junto a la meta: cuenta regresiva y luego corre sola
 		bool eDown = (keyboardState[DIK_E] != 0);
-		if (eDown && !eLast && !modoRuta && estadoCarrera == CarreraEsperando)
+		if (eDown && !eLast && !modoRuta && !modoCamara && estadoCarrera == CarreraEsperando)
 		{
 			float dx = playerPos.x - puntosRuta[0].x;
 			float dz = playerPos.z - puntosRuta[0].y;
@@ -443,12 +504,13 @@ public:
 				cuentaRegresiva = 4.0f;
 				siguientePunto = 1;
 				thirdPerson = true;		// la carrera se ve desde atras de la calaca
+				yawCalaca = camara->Yaw;
 			}
 		}
 		eLast = eDown;
 
 		bool vDown = (keyboardState[DIK_V] != 0);
-		if (vDown && !vKeyLast) thirdPerson = !thirdPerson;
+		if (vDown && !vKeyLast && !modoCamara) thirdPerson = !thirdPerson;
 		vKeyLast = vDown;
 
 		// Durante la cuenta y la carrera automatica el jugador no controla a la calaca
@@ -482,7 +544,22 @@ public:
 			}
 		}
 
-		if (thirdPerson)
+		if (modoCamara)
+		{
+			// Vuelo libre: la camara se mueve sola y la calaca se queda quieta
+			camara->UpdateCamera(moveBackForward, moveLeftRight, camYaw, camPitch);
+
+			float vertical = 0.0f;
+			if (keyboardState[DIK_SPACE]) vertical += speed;
+			if (keyboardState[DIK_LCONTROL] || keyboardState[DIK_RCONTROL]) vertical -= speed;
+
+			if (vertical != 0.0f)
+			{
+				camara->Position.y += vertical;
+				camara->UpdateCamera(0, 0, 0, 0);	// recalcula View con la nueva altura
+			}
+		}
+		else if (thirdPerson)
 		{
 			camara->UpdateCamera(0, 0, camYaw, camPitch);
 			playerPos += moveBackForward * camara->Forward;
@@ -558,6 +635,68 @@ public:
 		estadoCarrera = (puntosRuta.size() >= 2) ? CarreraEsperando : CarreraSinRuta;
 	}
 
+	// Lee las vistas de camara desde camaras.txt. Una linea por vista, en orden:
+	// "x, y, z, yaw, pitch" (yaw y pitch en grados).
+	// Acepta la configuracion "seguir = 1" (la camara apunta a la calaca) o
+	// "seguir = 0" (usa el yaw/pitch guardados tal cual).
+	void CargarVistas()
+	{
+		vistasCamara.clear();
+
+		vistasSeguir = true;
+		velocidadVuelo = 20.0f;
+
+		FILE* archivo = NULL;
+		if (fopen_s(&archivo, "camaras.txt", "r") != 0 || archivo == NULL)
+			return;
+
+		char linea[256];
+		while (fgets(linea, sizeof(linea), archivo) != NULL)
+		{
+			float x = 0.0f, y = 0.0f, z = 0.0f, yaw = 0.0f, pitch = 0.0f;
+
+			if (strncmp(linea, "seguir", 6) == 0)
+			{
+				int seguir = 1;
+				sscanf_s(linea, "seguir = %d", &seguir);
+				vistasSeguir = (seguir != 0);
+			}
+			else if (strncmp(linea, "velocidad_vuelo", 15) == 0)
+				sscanf_s(linea, "velocidad_vuelo = %f", &velocidadVuelo);
+			else if (sscanf_s(linea, "%f , %f , %f , %f , %f", &x, &y, &z, &yaw, &pitch) == 5)
+			{
+				VistaCamara vista;
+				vista.pos = D3DXVECTOR3(x, y, z);
+				vista.yaw = D3DXToRadian(yaw);
+				vista.pitch = D3DXToRadian(pitch);
+				vistasCamara.push_back(vista);
+			}
+		}
+		fclose(archivo);
+	}
+
+	void GuardarVistas()
+	{
+		FILE* archivo = NULL;
+		if (fopen_s(&archivo, "camaras.txt", "w") != 0 || archivo == NULL)
+			return;
+
+		fprintf(archivo, "# Vistas de camara de la carrera: la vista 1 se usa en el tramo hacia el\n");
+		fprintf(archivo, "# checkpoint 1, la 2 hacia el checkpoint 2, etc. Si hay mas checkpoints que\n");
+		fprintf(archivo, "# vistas, los tramos sobrantes se ven en tercera persona.\n");
+		fprintf(archivo, "# Formato: x, y, z, yaw, pitch  (yaw y pitch en grados).\n");
+		fprintf(archivo, "# Generado dentro del juego con F3 + P. Editable a mano.\n");
+		fprintf(archivo, "seguir = %d\n", vistasSeguir ? 1 : 0);
+		fprintf(archivo, "velocidad_vuelo = %.2f\n", velocidadVuelo);
+		for (size_t i = 0; i < vistasCamara.size(); i++)
+		{
+			fprintf(archivo, "%.2f, %.2f, %.2f, %.2f, %.2f\n",
+				vistasCamara[i].pos.x, vistasCamara[i].pos.y, vistasCamara[i].pos.z,
+				D3DXToDegree(vistasCamara[i].yaw), D3DXToDegree(vistasCamara[i].pitch));
+		}
+		fclose(archivo);
+	}
+
 	void GuardarRuta()
 	{
 		FILE* archivo = NULL;
@@ -578,7 +717,7 @@ public:
 
 	void ActualizarCarrera()
 	{
-		if (modoRuta)
+		if (modoRuta || modoCamara)
 			return;
 
 		if (estadoCarrera == CarreraSinRuta)
@@ -629,6 +768,9 @@ public:
 
 				playerPos.x += dx / distancia * paso;
 				playerPos.z += dz / distancia * paso;
+
+				// La calaca mira hacia donde corre (la camara ya no define su rumbo)
+				yawCalaca = atan2f(dx, dz);
 
 				dx = puntosRuta[siguientePunto].x - playerPos.x;
 				dz = puntosRuta[siguientePunto].y - playerPos.z;
@@ -856,6 +998,7 @@ public:
 		ColorPlano(marcadorPunto, 90, 160, 255);	// azul
 
 		CargarRuta();
+		CargarVistas();
 		vKeyLast = false;
 		//esta es la gui
 		Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
@@ -899,6 +1042,46 @@ public:
 		// Escalera central (local X -1 a +1, Z -1.5 a 2.5, sube hacia el norte)
 		castleWalls[19] = { 147.0f, 151.0f, 247.0f, 255.0f }; // escalera
 		audio.Init(L"Sonidos/ambient.wav", audioVolume);
+		return true;
+	}
+
+	// Coloca la camara en la vista guardada para el tramo actual de la carrera.
+	// Devuelve false si no hay vista para este tramo (se sigue en tercera persona).
+	bool AplicarVistaCarrera()
+	{
+		if (!autoCorriendo || siguientePunto < 1)
+			return false;
+
+		int indice = siguientePunto - 1;
+		if (indice >= (int)vistasCamara.size())
+			return false;
+
+		camara->Position = vistasCamara[indice].pos;
+
+		if (vistasSeguir)
+		{
+			// Apunta a la calaca para que la vista siga la carrera
+			D3DXVECTOR3 objetivo = D3DXVECTOR3(playerPos.x, playerPos.y + 2.0f, playerPos.z);
+			D3DXVECTOR3 direccion = objetivo - camara->Position;
+			float largo = D3DXVec3Length(&direccion);
+
+			if (largo > 0.01f)
+			{
+				float seno = direccion.y / largo;
+				if (seno > 1.0f) seno = 1.0f;
+				if (seno < -1.0f) seno = -1.0f;
+
+				camara->Yaw = atan2f(direccion.x, direccion.z);
+				camara->Pitch = -asinf(seno);
+			}
+		}
+		else
+		{
+			camara->Yaw = vistasCamara[indice].yaw;
+			camara->Pitch = vistasCamara[indice].pitch;
+		}
+
+		camara->UpdateCamera(0.0f, 0.0f, 0.0f, 0.0f);
 		return true;
 	}
 
@@ -988,7 +1171,9 @@ public:
 
 		D3DXMATRIX escalaCalaca, lugarCalaca, rotCalaca;
 		D3DXMatrixScaling(&escalaCalaca, 2.0f, 2.0f, 2.0f);
-		D3DXMatrixRotationY(&rotCalaca, camara->Yaw + D3DX_PI);
+		// En la carrera automatica la calaca mira hacia donde corre (la camara puede
+		// estar en cualquier lado); el resto del tiempo mira hacia donde apunta la vista.
+		D3DXMatrixRotationY(&rotCalaca, (autoCorriendo ? yawCalaca : camara->Yaw) + D3DX_PI);
 
 		// Pequeño rebote para que se note que va corriendo
 		float reboteCalaca = 0.0f;
@@ -1117,15 +1302,23 @@ public:
 		}
 
 		playerPos.y = terreno->getTerrainCollision(D3DXVECTOR2(playerPos.x, playerPos.z));
-		if (thirdPerson)
+
+		if (modoCamara)
 		{
-			camara->Position = playerPos - camara->Forward * 8.0f + D3DXVECTOR3(0.0f, 4.0f, 0.0f);
+			// La camara la controla el jugador en el editor de vistas
 		}
-		else
+		else if (!AplicarVistaCarrera())
 		{
-			camara->Position.x = playerPos.x;
-			camara->Position.z = playerPos.z;
-			camara->Position.y = playerPos.y + 3.0f;
+			if (thirdPerson)
+			{
+				camara->Position = playerPos - camara->Forward * 8.0f + D3DXVECTOR3(0.0f, 4.0f, 0.0f);
+			}
+			else
+			{
+				camara->Position.x = playerPos.x;
+				camara->Position.z = playerPos.z;
+				camara->Position.y = playerPos.y + 3.0f;
+			}
 		}
 	}
 
