@@ -299,7 +299,7 @@ private:
 	bool faseAlmas = false;
 	float almasTiempo = 60.0f;
 	int almasRecogidas = 0;
-	float radioAlma = 5.0f;
+	float radioAlma = 7.5f;
 	D3DXVECTOR3 almasPos[almasTotal];
 	bool almaDisponible[almasTotal];
 	MPrimitives* almaObjetos[almasTotal] = { nullptr };
@@ -327,6 +327,53 @@ private:
 	MPrimitives* hudAlmasRestantes = nullptr;
 	std::vector<unsigned char> almasRestantesPixeles;
 	std::wstring almasRestantesDibujado;
+
+	// Tab oculta/muestra la tabla de stats de las rivales
+	bool mostrarTablaStats = true;
+	bool tabLast = false;
+
+	// Edicion del circuito (F2/F3 y aros del circuito). Se puede apagar desde
+	// el menu de pausa para dejar solo el aro de inicio y los de resistencia.
+	bool edicionCircuito = true;
+
+	// Menu de pausa (ESC). 0 = cerrado, 1 = principal, 2 = opciones.
+	int menuEstado = 0;
+	MPrimitives* hudMenuFondo = nullptr;
+	MPrimitives* hudMenuTitulo = nullptr;
+	MPrimitives* hudMenuOpciones = nullptr;
+	MPrimitives* hudMenuOpcion[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
+	MPrimitives* hudMenuEtiqueta = nullptr;
+	MPrimitives* hudMenuPie = nullptr;
+	MPrimitives* hudMenuHover = nullptr;
+	MPrimitives* hudCursor = nullptr;
+	MPrimitives* hudSliderFondo = nullptr;
+	MPrimitives* hudSliderRelleno = nullptr;
+	MPrimitives* hudSliderKnob = nullptr;
+	std::vector<unsigned char> menuTituloPixeles;
+	std::vector<unsigned char> menuOpcionesPixeles;
+	std::vector<unsigned char> menuOpcionPixeles[5];
+	std::vector<unsigned char> menuEtiquetaPixeles;
+	std::vector<unsigned char> menuPiePixeles;
+	std::vector<unsigned char> cursorPixeles;
+	std::vector<unsigned char> sliderKnobPixeles;
+	std::wstring menuTituloDibujado;
+	std::wstring menuOpcionesDibujado;
+	std::wstring menuOpcionDibujado[5];
+	std::wstring menuEtiquetaDibujado;
+	std::wstring menuPieDibujado;
+
+	// Cursor virtual del menu (el mouse de DirectInput entrega movimiento relativo)
+	float menuMouseX = 960.0f, menuMouseY = 540.0f;
+	bool mouseBotonLast = false;
+	bool arrastrandoVolumen = false;
+	bool menuTeclasLast[5] = { false, false, false, false, false };
+
+	struct RenglonMenu { float x, y, w, h; };
+	RenglonMenu renglonesMenu[5];
+	RenglonMenu renglonVolver;
+	float menuPanelX = 0.0f, menuPanelY = 0.0f;
+	float menuPanelW = 1100.0f, menuPanelH = 780.0f;
+	float sliderX = 0.0f, sliderY = 0.0f, sliderW = 660.0f, sliderH = 16.0f;
 
 
 	float rotPerFrame;
@@ -503,6 +550,198 @@ public:
 		ZeroMemory(&mouseLastState, sizeof(mouseLastState));
 	}
 
+	// Geometria del menu de pausa: panel, renglones y barra de volumen.
+	void CalcularRenglonesMenu()
+	{
+		menuPanelW = 1100.0f;
+		menuPanelH = 780.0f;
+		menuPanelX = (hudScreenW - menuPanelW) * 0.5f;
+		menuPanelY = (hudScreenH - menuPanelH) * 0.5f;
+
+		const float opX = menuPanelX + 130.0f;
+		const float opY = menuPanelY + 200.0f;
+		const float opW = 840.0f;
+		const float opH = 84.0f;
+
+		for (int i = 0; i < 5; i++)
+		{
+			renglonesMenu[i].x = opX;
+			renglonesMenu[i].y = opY + i * 96.0f;
+			renglonesMenu[i].w = opW;
+			renglonesMenu[i].h = opH;
+		}
+
+		renglonVolver.x = opX;
+		renglonVolver.y = menuPanelY + 560.0f;
+		renglonVolver.w = opW;
+		renglonVolver.h = opH;
+
+		sliderX = menuPanelX + 130.0f;
+		sliderY = menuPanelY + 330.0f;
+		sliderW = 660.0f;
+		sliderH = 16.0f;
+	}
+
+	void AplicarVolumen(float v)
+	{
+		if (v < 0.0f) v = 0.0f;
+		if (v > 1.0f) v = 1.0f;
+
+		audioVolume = v;
+		audio.SetVolume(v);
+	}
+
+	void AlternarEdicionCircuito()
+	{
+		edicionCircuito = !edicionCircuito;
+
+		// Al apagarla no se puede seguir dentro de un editor
+		if (!edicionCircuito)
+		{
+			modoRuta = false;
+			modoCamara = false;
+		}
+	}
+
+	// Vuelve al dia 1 con la calaca en el spawn y el circuito recargado.
+	void ReiniciarPartida()
+	{
+		menuEstado = 0;
+		modoRuta = false;
+		modoCamara = false;
+		mostrarTablaStats = true;
+		faseAlmas = false;
+		consumiendoAlmas = false;
+		almasRecogidas = 0;
+		almasConsumidas = 0;
+		bannerTiempo = 0.0f;
+		qteActivo = false;
+		cargaUlti = 0.0f;
+		ultiTiempo = 0.0f;
+
+		playerPos = D3DXVECTOR3(150.0f, 0.0f, 200.0f);
+		playerPos.y = terreno->getTerrainCollision(D3DXVECTOR2(playerPos.x, playerPos.z));
+		thirdPerson = false;
+
+		camara->Yaw = 0.0f;
+		camara->Pitch = 0.0f;
+		camara->Position = D3DXVECTOR3(playerPos.x, playerPos.y + 3.0f, playerPos.z);
+		camara->UpdateCamera(0.0f, 0.0f, 0.0f, 0.0f);
+
+		CargarRuta();
+		CargarVistas();
+		IniciarDias();
+	}
+
+	void EjecutarOpcionMenu(int opcion)
+	{
+		if (opcion == 0)
+			menuEstado = 0;					// Continuar
+		else if (opcion == 1)
+			ReiniciarPartida();				// Reiniciar partida
+		else if (opcion == 2)
+			AlternarEdicionCircuito();		// Edicion de circuito
+		else if (opcion == 3)
+			menuEstado = 2;					// Opciones
+		else if (opcion == 4)
+			PostQuitMessage(0);				// Salir del juego
+	}
+
+	// Abre/cierra el menu de pausa (ESC). Si esta en Opciones, vuelve al principal.
+	void AlternarMenuPausa()
+	{
+		if (menuEstado == 0)
+		{
+			menuEstado = 1;
+			CalcularRenglonesMenu();
+			menuMouseX = hudScreenW * 0.5f;
+			menuMouseY = hudScreenH * 0.5f;
+			mouseBotonLast = true;		// evita un clic fantasma al abrir
+		}
+		else if (menuEstado == 2)
+		{
+			menuEstado = 1;
+		}
+		else
+		{
+			menuEstado = 0;
+		}
+	}
+
+	// Mouse (cursor virtual) y teclas 1-5 dentro del menu.
+	void ActualizarMenu(const BYTE* teclas, const DIMOUSESTATE& mouse)
+	{
+		CalcularRenglonesMenu();
+
+		menuMouseX += (float)mouse.lX;
+		menuMouseY += (float)mouse.lY;
+		if (menuMouseX < 0.0f) menuMouseX = 0.0f;
+		if (menuMouseX > (float)hudScreenW - 1.0f) menuMouseX = (float)hudScreenW - 1.0f;
+		if (menuMouseY < 0.0f) menuMouseY = 0.0f;
+		if (menuMouseY > (float)hudScreenH - 1.0f) menuMouseY = (float)hudScreenH - 1.0f;
+
+		bool clic = (mouse.rgbButtons[0] & 0x80) != 0;
+		bool clicNuevo = clic && !mouseBotonLast;
+
+		bool nuevo[5];
+		for (int i = 0; i < 5; i++)
+		{
+			bool abajo = (teclas[DIK_1 + i] != 0);
+			nuevo[i] = abajo && !menuTeclasLast[i];
+			menuTeclasLast[i] = abajo;
+		}
+
+		if (menuEstado == 1)
+		{
+			for (int i = 0; i < 5; i++)
+			{
+				bool hover = menuMouseX >= renglonesMenu[i].x &&
+					menuMouseX <= renglonesMenu[i].x + renglonesMenu[i].w &&
+					menuMouseY >= renglonesMenu[i].y &&
+					menuMouseY <= renglonesMenu[i].y + renglonesMenu[i].h;
+
+				if (nuevo[i] || (clicNuevo && hover))
+				{
+					EjecutarOpcionMenu(i);
+					break;
+				}
+			}
+		}
+		else if (menuEstado == 2)
+		{
+			bool sobreBarra = menuMouseX >= sliderX - 30.0f &&
+				menuMouseX <= sliderX + sliderW + 30.0f &&
+				menuMouseY >= sliderY - 30.0f &&
+				menuMouseY <= sliderY + sliderH + 30.0f;
+
+			if (clicNuevo && sobreBarra)
+				arrastrandoVolumen = true;
+			if (!clic)
+				arrastrandoVolumen = false;
+
+			if (arrastrandoVolumen)
+			{
+				float f = (menuMouseX - sliderX) / sliderW;
+				AplicarVolumen(f);
+			}
+
+			if (teclas[DIK_LEFT])
+				AplicarVolumen(audioVolume - deltaTime * 0.6f);
+			if (teclas[DIK_RIGHT])
+				AplicarVolumen(audioVolume + deltaTime * 0.6f);
+
+			bool hoverVolver = menuMouseX >= renglonVolver.x &&
+				menuMouseX <= renglonVolver.x + renglonVolver.w &&
+				menuMouseY >= renglonVolver.y &&
+				menuMouseY <= renglonVolver.y + renglonVolver.h;
+
+			if (nuevo[0] || (clicNuevo && hoverVolver))
+				menuEstado = 1;
+		}
+
+		mouseBotonLast = clic;
+	}
+
 	void DetectInput()
 	{
 		DIMOUSESTATE mouseCurrState;
@@ -530,6 +769,13 @@ public:
 			ZeroMemory(keyboardState, sizeof(keyboardState));
 		}
 
+		// Menu de pausa: el mouse mueve un cursor virtual y el juego queda quieto
+		if (menuEstado != 0)
+		{
+			ActualizarMenu(keyboardState, mouseCurrState);
+			return;
+		}
+
 		float speed = (modoCamara ? velocidadVuelo : 20.0f) * deltaTime;
 
 		float moveLeftRight = 0;
@@ -544,6 +790,12 @@ public:
 		}
 
 		showColliders = (keyboardState[DIK_C] != 0);
+
+		// Tab oculta o muestra la tabla de estadisticas de las rivales
+		bool tabDown = (keyboardState[DIK_TAB] != 0);
+		if (tabDown && !tabLast)
+			mostrarTablaStats = !mostrarTablaStats;
+		tabLast = tabDown;
 
 		if(keyboardState[DIK_A])
 		{
@@ -604,7 +856,7 @@ public:
 
 		// Modo de captura de ruta: F2 lo activa, P agrega el punto actual, Retroceso borra el ultimo
 		bool f2Down = (keyboardState[DIK_F2] != 0);
-		if (f2Down && !f2Last && !modoCamara)
+		if (f2Down && !f2Last && !modoCamara && edicionCircuito)
 		{
 			modoRuta = !modoRuta;
 			if (!modoRuta)
@@ -615,7 +867,7 @@ public:
 		// Modo editor de vistas de camara: F3 lo activa (vuelo libre), P guarda la
 		// vista actual como la del siguiente tramo y Retroceso borra la ultima.
 		bool f3Down = (keyboardState[DIK_F3] != 0);
-		if (f3Down && !f3Last && !modoRuta)
+		if (f3Down && !f3Last && !modoRuta && edicionCircuito)
 		{
 			if (modoCamara)
 			{
@@ -2167,8 +2419,150 @@ public:
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
 
+	// Menu de pausa: fondo, titulo y opciones con la paleta del aviso del dia.
+	// El submenu de opciones muestra la barra de volumen con su cursor.
+	void DibujarMenu()
+	{
+		CalcularRenglonesMenu();
+		bool esOpciones = (menuEstado == 2);
+
+		// Titulo
+		const wchar_t* titulo = esOpciones ? L"Opciones" : L"Men\u00FA";
+		if (menuTituloDibujado != titulo)
+		{
+			GenerarTextoBGRA(titulo, 900, 120, 72, 255, 255, 255, menuTituloPixeles);
+			hudMenuTitulo->SetTextureFromPixels(900, 120, menuTituloPixeles.data());
+			menuTituloDibujado = titulo;
+		}
+
+		if (!esOpciones)
+		{
+			// Una textura por renglon: asi el texto queda centrado en su fila y el
+			// resaltado del raton no se desfasa de la opcion.
+			std::wstring opciones[5] = {
+				L"(1) Continuar",
+				L"(2) Reiniciar partida",
+				L"(3) Edici\u00F3n de circuito (F2/F3): ",
+				L"(4) Opciones",
+				L"(5) Salir del juego"
+			};
+			opciones[2] += edicionCircuito ? L"S\u00ED" : L"No";
+
+			for (int i = 0; i < 5; i++)
+			{
+				if (menuOpcionDibujado[i] != opciones[i])
+				{
+					GenerarTextoBGRA(opciones[i].c_str(), 840, 84, 44, 255, 215, 60,
+						menuOpcionPixeles[i], true);
+					hudMenuOpcion[i]->SetTextureFromPixels(840, 84, menuOpcionPixeles[i].data());
+					menuOpcionDibujado[i] = opciones[i];
+				}
+			}
+		}
+		else
+		{
+			wchar_t etiqueta[64];
+			swprintf_s(etiqueta, L"Volumen: %d%%", (int)(audioVolume * 100.0f + 0.5f));
+			if (menuOpcionesDibujado != etiqueta)
+			{
+				GenerarTextoBGRA(etiqueta, 500, 60, 40, 230, 220, 190,
+					menuOpcionesPixeles, true);
+				hudMenuOpciones->SetTextureFromPixels(500, 60, menuOpcionesPixeles.data());
+				menuOpcionesDibujado = etiqueta;
+			}
+
+			if (menuEtiquetaDibujado != L"(1) Volver")
+			{
+				GenerarTextoBGRA(L"(1) Volver", 400, 84, 44, 255, 215, 60,
+					menuEtiquetaPixeles, true);
+				hudMenuEtiqueta->SetTextureFromPixels(400, 84, menuEtiquetaPixeles.data());
+				menuEtiquetaDibujado = L"(1) Volver";
+			}
+		}
+
+		const wchar_t* pie = esOpciones
+			? L"Arrastra la barra o usa las flechas      ESC para volver"
+			: L"Clic o teclas 1-5      ESC para continuar";
+		if (menuPieDibujado != pie)
+		{
+			GenerarTextoBGRA(pie, 900, 50, 26, 230, 220, 190, menuPiePixeles);
+			hudMenuPie->SetTextureFromPixels(900, 50, menuPiePixeles.data());
+			menuPieDibujado = pie;
+		}
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		hudMenuFondo->DrawHUD(menuPanelX, menuPanelY, menuPanelW, menuPanelH,
+			hudScreenW, hudScreenH);
+
+		hudMenuTitulo->DrawHUD(menuPanelX + (menuPanelW - 900.0f) * 0.5f,
+			menuPanelY + 30.0f, 900.0f, 120.0f, hudScreenW, hudScreenH);
+
+		if (!esOpciones)
+		{
+			for (int i = 0; i < 5; i++)
+			{
+				bool hover = menuMouseX >= renglonesMenu[i].x &&
+					menuMouseX <= renglonesMenu[i].x + renglonesMenu[i].w &&
+					menuMouseY >= renglonesMenu[i].y &&
+					menuMouseY <= renglonesMenu[i].y + renglonesMenu[i].h;
+
+				if (hover)
+					hudMenuHover->DrawHUD(renglonesMenu[i].x - 20.0f,
+						renglonesMenu[i].y - 4.0f, renglonesMenu[i].w + 40.0f,
+						renglonesMenu[i].h + 8.0f, hudScreenW, hudScreenH);
+
+				hudMenuOpcion[i]->DrawHUD(renglonesMenu[i].x, renglonesMenu[i].y,
+					renglonesMenu[i].w, renglonesMenu[i].h, hudScreenW, hudScreenH);
+			}
+		}
+		else
+		{
+			hudMenuOpciones->DrawHUD(menuPanelX + 130.0f, menuPanelY + 200.0f,
+				500.0f, 60.0f, hudScreenW, hudScreenH);
+
+			hudSliderFondo->DrawHUD(sliderX, sliderY, sliderW, sliderH,
+				hudScreenW, hudScreenH);
+			if (audioVolume > 0.001f)
+				hudSliderRelleno->DrawHUD(sliderX, sliderY, sliderW * audioVolume,
+					sliderH, hudScreenW, hudScreenH);
+			hudSliderKnob->DrawHUD(sliderX + sliderW * audioVolume - 22.0f,
+				sliderY + sliderH * 0.5f - 22.0f, 44.0f, 44.0f,
+				hudScreenW, hudScreenH);
+
+			bool hoverVolver = menuMouseX >= renglonVolver.x &&
+				menuMouseX <= renglonVolver.x + renglonVolver.w &&
+				menuMouseY >= renglonVolver.y &&
+				menuMouseY <= renglonVolver.y + renglonVolver.h;
+			if (hoverVolver)
+				hudMenuHover->DrawHUD(renglonVolver.x - 20.0f, renglonVolver.y - 4.0f,
+					renglonVolver.w + 40.0f, renglonVolver.h + 8.0f,
+					hudScreenW, hudScreenH);
+
+			hudMenuEtiqueta->DrawHUD(renglonVolver.x, renglonVolver.y,
+				400.0f, 84.0f, hudScreenW, hudScreenH);
+		}
+
+		hudMenuPie->DrawHUD(menuPanelX + (menuPanelW - 900.0f) * 0.5f,
+			menuPanelY + menuPanelH - 90.0f, 900.0f, 50.0f,
+			hudScreenW, hudScreenH);
+
+		hudCursor->DrawHUD(menuMouseX - 2.0f, menuMouseY - 2.0f, 32.0f, 32.0f,
+			hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+	}
+
 	void DibujarHUD()
 	{
+		if (menuEstado != 0)
+		{
+			DibujarMenu();
+			return;
+		}
+
 		if (!hudTexto.empty())
 		{
 			// La cuenta regresiva se dibuja con fuente grande y centrada en pantalla
@@ -2407,7 +2801,7 @@ public:
 	// muestran los reales. Solo se regenera la textura cuando cambian los datos.
 	void DibujarTablaStats()
 	{
-		if (bannerTiempo > 0.0f || consumiendoAlmas)
+		if (!mostrarTablaStats || bannerTiempo > 0.0f || consumiendoAlmas)
 			return;
 
 		std::wstring clave = std::to_wstring(diaActual);
@@ -2527,6 +2921,10 @@ public:
 
 		for (int i = 0; i < (int)puntosRuta.size(); i++)
 		{
+			// Con la edicion apagada solo queda el aro de inicio
+			if (!edicionCircuito && i != 0)
+				continue;
+
 			MPrimitives* anillo = marcadorPunto;
 			float radio = radioPunto;
 
@@ -2763,6 +3161,20 @@ public:
 		hudAlmasOpciones = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudAlmasRestantes = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 
+		// Menu de pausa y submenu de opciones
+		hudMenuFondo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudMenuTitulo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudMenuOpciones = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		for (int i = 0; i < 5; i++)
+			hudMenuOpcion[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudMenuEtiqueta = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudMenuPie = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudMenuHover = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudCursor = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudSliderFondo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudSliderRelleno = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudSliderKnob = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+
 		// Diamante verde de la calaca del jugador y calacas rivales
 		diamanteJugador = new MPrimitives(d3d11Device, d3d11DevCon, L"", ShaderDiffuse);
 		for (int i = 0; i < 4; i++)
@@ -2808,6 +3220,14 @@ public:
 		ColorPlano(hudQteBarraFondo, 40, 45, 60);	// pista oscura
 		ColorPlano(hudBannerFondo, 15, 18, 28, 170);	// fondo semitransparente del aviso
 		ColorPlano(diamanteJugador, 40, 230, 40);	// diamante verde de la calaca del jugador
+		ColorPlano(hudMenuFondo, 15, 18, 28, 205);	// panel oscuro del menu de pausa
+		ColorPlano(hudMenuHover, 255, 215, 60, 45);	// resaltado de la opcion bajo el cursor
+		ColorPlano(hudSliderFondo, 70, 74, 86);		// pista de la barra de volumen
+		ColorPlano(hudSliderRelleno, 205, 210, 220);	// relleno de la barra de volumen
+		GenerarCirculoBGRA(44, 230, 230, 235, sliderKnobPixeles);
+		hudSliderKnob->SetTextureFromPixels(44, 44, sliderKnobPixeles.data());
+		GenerarCursorBGRA(32, cursorPixeles);
+		hudCursor->SetTextureFromPixels(32, 32, cursorPixeles.data());
 
 		srand((unsigned int)time(NULL));			// secuencias aleatorias del QTE
 

@@ -713,4 +713,106 @@ inline void GenerarAlmaBGRA(int ancho, int alto, float semilla, std::vector<unsi
 	}
 }
 
+// Circulo relleno con borde suave, para el boton de la barra de volumen.
+inline void GenerarCirculoBGRA(int diametro, unsigned char r, unsigned char g, unsigned char b,
+	std::vector<unsigned char>& bgra)
+{
+	bgra.assign((size_t)diametro * diametro * 4, 0);
+
+	float centro = (diametro - 1) * 0.5f;
+	float radio = diametro * 0.5f;
+
+	for (int y = 0; y < diametro; y++)
+	{
+		for (int x = 0; x < diametro; x++)
+		{
+			float dx = x - centro;
+			float dy = y - centro;
+			float d = sqrtf(dx * dx + dy * dy);
+			if (d > radio)
+				continue;
+
+			float alfa = 1.0f;
+			if (d > radio - 1.5f)
+				alfa = (radio - d) / 1.5f;
+
+			size_t i = ((size_t)y * diametro + x) * 4;
+			bgra[i + 0] = b;
+			bgra[i + 1] = g;
+			bgra[i + 2] = r;
+			bgra[i + 3] = (unsigned char)(alfa * 255.0f + 0.5f);
+		}
+	}
+}
+
+// Cursor del menu: flecha blanca con contorno negro sobre fondo transparente.
+inline void GenerarCursorBGRA(int tam, std::vector<unsigned char>& bgra)
+{
+	bgra.assign((size_t)tam * tam * 4, 0);
+
+	BITMAPINFO bi;
+	ZeroMemory(&bi, sizeof(bi));
+	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth = tam;
+	bi.bmiHeader.biHeight = -tam;	// negativo = fila superior primero
+	bi.bmiHeader.biPlanes = 1;
+	bi.bmiHeader.biBitCount = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+
+	void* bits = NULL;
+	HBITMAP dib = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+	if (dib == NULL || bits == NULL)
+		return;
+
+	HDC dc = CreateCompatibleDC(NULL);
+	HGDIOBJ oldBmp = SelectObject(dc, dib);
+
+	// Magenta de clave: esos pixeles quedan transparentes al copiar
+	HBRUSH clave = CreateSolidBrush(RGB(255, 0, 255));
+	RECT todo = { 0, 0, tam, tam };
+	FillRect(dc, &todo, clave);
+	DeleteObject(clave);
+
+	// Flecha clasica con la punta arriba a la izquierda
+	float s = tam / 20.0f;
+	POINT puntos[7] = {
+		{ (LONG)(1 * s),  (LONG)(1 * s) },
+		{ (LONG)(1 * s),  (LONG)(17 * s) },
+		{ (LONG)(5 * s),  (LONG)(13 * s) },
+		{ (LONG)(8 * s),  (LONG)(20 * s) },
+		{ (LONG)(11 * s), (LONG)(18 * s) },
+		{ (LONG)(8 * s),  (LONG)(11 * s) },
+		{ (LONG)(13 * s), (LONG)(11 * s) }
+	};
+
+	HBRUSH blanco = CreateSolidBrush(RGB(255, 255, 255));
+	HPEN negro = CreatePen(PS_SOLID, 2, RGB(0, 0, 0));
+	HGDIOBJ oldB = SelectObject(dc, blanco);
+	HGDIOBJ oldP = SelectObject(dc, negro);
+	SetBkMode(dc, TRANSPARENT);
+	Polygon(dc, puntos, 7);
+
+	SelectObject(dc, oldB);
+	SelectObject(dc, oldP);
+	DeleteObject(blanco);
+	DeleteObject(negro);
+	SelectObject(dc, oldBmp);
+	DeleteDC(dc);
+
+	unsigned char* p = (unsigned char*)bits;
+	for (int i = 0; i < tam * tam; i++)
+	{
+		unsigned char b = p[i * 4 + 0];
+		unsigned char g = p[i * 4 + 1];
+		unsigned char r = p[i * 4 + 2];
+
+		bgra[i * 4 + 0] = b;
+		bgra[i * 4 + 1] = g;
+		bgra[i * 4 + 2] = r;
+		bgra[i * 4 + 3] = (r == 255 && g == 0 && b == 255) ? 0 : 255;
+	}
+
+	DeleteObject(dib);
+}
+
 #endif

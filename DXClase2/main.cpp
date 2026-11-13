@@ -24,6 +24,7 @@ const int Height = 1080;
 // redimensionar el swapchain.
 static bool pantallaCompleta = false;
 static bool f11Presionada = false;
+static bool escPresionada = false;
 static RECT ventanaAnterior;
 static LONG_PTR estiloAnterior = 0;
 
@@ -222,8 +223,10 @@ LRESULT CALLBACK WndProc(HWND hwnd,
 	switch (msg)
 	{
 	case WM_KEYDOWN:
-		if (wParam == VK_ESCAPE){
-			DestroyWindow(hwnd);
+		if (wParam == VK_ESCAPE && !escPresionada){
+			escPresionada = true;
+			if (dxrender)
+				dxrender->AlternarMenuPausa();
 		}
 		if (wParam == VK_F11 && !f11Presionada){
 			f11Presionada = true;
@@ -232,6 +235,8 @@ LRESULT CALLBACK WndProc(HWND hwnd,
 		return 0;
 
 	case WM_KEYUP:
+		if (wParam == VK_ESCAPE)
+			escPresionada = false;
 		if (wParam == VK_F11)
 			f11Presionada = false;
 		return 0;
