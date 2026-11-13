@@ -661,4 +661,54 @@ inline void GenerarTeclaEspacioBGRA(int ancho, int alto, std::vector<unsigned ch
 	DeleteObject(dib);
 }
 
+// Genera en 'bgra' un alma: una llama vertical blanca/dorada con un halo suave,
+// pensada para dibujarse como billboard con blending alfa. 'semilla' cambia la
+// forma para que cada alma se vea un poco distinta.
+inline void GenerarAlmaBGRA(int ancho, int alto, float semilla, std::vector<unsigned char>& bgra)
+{
+	bgra.assign((size_t)ancho * alto * 4, 0);
+
+	for (int y = 0; y < alto; y++)
+	{
+		float v = (y + 0.5f) / (float)alto;		// 0 = punta, 1 = base
+
+		// La llama se afina en la punta y se apaga en la base
+		float punta = (v < 0.14f) ? (v / 0.14f) : 1.0f;
+		float base = (v > 0.88f) ? (1.0f - (v - 0.88f) / 0.12f) : 1.0f;
+		float cuerpo = punta * base;
+
+		// Perfil de gota: ancha abajo y angosta arriba, con una leve ondulacion
+		float radio = 0.10f + 0.62f * powf(v, 0.75f);
+		float centro = 0.09f * sinf(v * 6.5f + semilla) * (1.0f - v);
+
+		for (int x = 0; x < ancho; x++)
+		{
+			float u = ((x + 0.5f) / (float)ancho) * 2.0f - 1.0f;
+			float d = (u - centro) / radio;
+
+			// Nucleo blanco + halo dorado ancho
+			float nucleo = expf(-d * d * 3.0f);
+			float halo = expf(-d * d * 0.55f) * 0.55f;
+			float brillo = (nucleo + halo) * cuerpo;
+
+			// Ruido fijo para que el borde no sea perfecto
+			brillo *= 0.90f + 0.10f * sinf(x * 12.9898f + y * 78.233f + semilla * 43.7f);
+
+			if (brillo <= 0.004f)
+				continue;
+
+			float t = (brillo > 1.0f) ? 1.0f : brillo;
+
+			// Blanco en el centro, dorado hacia el borde
+			float k = (nucleo * cuerpo > 1.0f) ? 1.0f : nucleo * cuerpo;
+
+			size_t i = ((size_t)y * ancho + x) * 4;
+			bgra[i + 0] = (unsigned char)(110.0f + 145.0f * k + 0.5f);
+			bgra[i + 1] = (unsigned char)(198.0f + 57.0f * k + 0.5f);
+			bgra[i + 2] = 255;
+			bgra[i + 3] = (unsigned char)(t * 255.0f + 0.5f);
+		}
+	}
+}
+
 #endif

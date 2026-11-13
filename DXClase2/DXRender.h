@@ -182,6 +182,7 @@ private:
 		float porcentajeMejora;
 		float probabilidadAro;
 		int mejoras[3];				// 0 = velocidad, 1 = aceleracion, 2 = resistencia
+		int mejorasExtra[3];		// almas perdidas: cada una suma 8% a ese stat
 
 		D3DXVECTOR3 pos;
 		float velocidad;
@@ -290,6 +291,29 @@ private:
 	std::wstring bannerTituloDibujado;
 	std::wstring bannerSubDibujado;
 	float bannerTiempo = 0.0f;
+
+	// Fase de las almas de poder: al terminar el 4to entrenamiento de los dias
+	// 1 y 2 aparece un aviso y despues un minuto para juntar 5 almas repartidas
+	// por el mapa. Cada alma recogida sube un nivel el stat que elija el jugador.
+	static const int almasTotal = 5;
+	bool faseAlmas = false;
+	float almasTiempo = 60.0f;
+	int almasRecogidas = 0;
+	int almasPendientes = 0;		// almas recogidas que faltan asignar a un stat
+	float radioAlma = 5.0f;
+	D3DXVECTOR3 almasPos[almasTotal];
+	bool almaDisponible[almasTotal];
+	MPrimitives* almaObjetos[almasTotal] = { nullptr };
+	std::vector<unsigned char> almaPixeles;
+	bool tecla1Last = false, tecla2Last = false, tecla3Last = false;
+
+	// Contador del minuto, arriba al centro
+	MPrimitives* hudAlmasContador = nullptr;
+	std::vector<unsigned char> almasContadorPixeles;
+	std::wstring almasContadorDibujado;
+	int almasContadorAncho = 240;
+	int almasContadorAlto = 110;
+	int almasContadorFuente = 76;
 
 
 	float rotPerFrame;
@@ -801,6 +825,26 @@ public:
 		}
 		eLast = eDown;
 
+		// Fase de almas: 1/2/3 eligen a que stat va el alma recogida
+		if (faseAlmas && almasPendientes > 0 && !modoRuta && !modoCamara)
+		{
+			bool k1 = (keyboardState[DIK_1] != 0);
+			bool k2 = (keyboardState[DIK_2] != 0);
+			bool k3 = (keyboardState[DIK_3] != 0);
+
+			if (k1 && !tecla1Last)			AsignarAlmaJugador(0);
+			else if (k2 && !tecla2Last)		AsignarAlmaJugador(1);
+			else if (k3 && !tecla3Last)		AsignarAlmaJugador(2);
+
+			tecla1Last = k1;
+			tecla2Last = k2;
+			tecla3Last = k3;
+		}
+		else
+		{
+			tecla1Last = tecla2Last = tecla3Last = false;
+		}
+
 		bool vDown = (keyboardState[DIK_V] != 0);
 		if (vDown && !vKeyLast && !modoCamara) thirdPerson = !thirdPerson;
 		vKeyLast = vDown;
@@ -1211,6 +1255,18 @@ public:
 		bannerTiempo = 5.0f;
 	}
 
+	// Aviso de fin de carrera, con el mismo estilo que el aviso del dia.
+	void MostrarBannerFinal()
+	{
+		bannerTitulo = L"\u00A1Carrera terminada!";
+
+		wchar_t sub[64];
+		swprintf_s(sub, L"%d\u00B0 lugar", RangoJugador());
+		bannerSub = sub;
+
+		bannerTiempo = 6.0f;
+	}
+
 	// Termina el dia y arranca el siguiente (o el dia de la carrera)
 	void AvanzarDia()
 	{
@@ -1252,7 +1308,7 @@ public:
 		tiempoMensajeEntrenamiento = 3.0f;
 
 		if (entrenamientosHoy >= 4)
-			AvanzarDia();
+			IniciarFaseAlmas();		// al terminar el dia, salen las almas de poder
 		else
 		{
 			// Nueva hora del dia: cada punto vuelve a estar disponible, asi que
@@ -1285,6 +1341,140 @@ public:
 			Entrenar(puntosEntrenamiento[i].tipo);
 			return;
 		}
+	}
+
+	// Sube un nivel el stat elegido por el jugador con un alma recogida
+	void AsignarAlmaJugador(int stat)
+	{
+		if (almasPendientes <= 0)
+			return;
+
+		if (stat == 0)			mejorasVelocidad++;
+		else if (stat == 1)		mejorasAceleracion++;
+		else					mejorasResistencia++;
+
+		RecalcularEstadisticas();
+		almasPendientes--;
+	}
+
+	// Las almas que el jugador no recogio se reparten entre las rivales:
+	// 50% elite, 30% experimentada, 10% aficionada y 10% principiante.
+	// Cada una sube 8% a un stat al azar (extras, aparte de sus mejoras).
+	void RepartirAlmasPerdidas(int cantidad)
+	{
+		for (int i = 0; i < cantidad; i++)
+		{
+			int tirada = rand() % 100;
+			int indice = (tirada < 50) ? 0 : (tirada < 80) ? 1 : (tirada < 90) ? 2 : 3;
+
+			calacasIA[indice].mejorasExtra[rand() % 3]++;
+		}
+	}
+
+	// Reparte las 5 almas a lo largo del circuito, un poco al costado de
+	// algunos checkpoints.
+	void ColocarAlmas()
+	{
+		int total = (int)puntosRuta.size();
+
+		for (int i = 0; i < almasTotal; i++)
+		{
+			almaDisponible[i] = true;
+
+			int indice = 1;
+			if (total > 1)
+				indice = 1 + (int)((total - 1) * (i + 0.5f) / almasTotal);
+			if (indice >= total)
+				indice = total - 1;
+
+			float x = puntosRuta[indice].x + 5.0f * cosf(i * 2.1f + 0.7f);
+			float z = puntosRuta[indice].y + 5.0f * sinf(i * 2.1f + 0.7f);
+
+			almasPos[i].x = x;
+			almasPos[i].z = z;
+			almasPos[i].y = terreno->getTerrainCollision(D3DXVECTOR2(x, z));
+		}
+	}
+
+	// Arranca la fase de las almas: aviso grande y despues el minuto.
+	void IniciarFaseAlmas()
+	{
+		faseAlmas = true;
+		almasTiempo = 60.0f;
+		almasRecogidas = 0;
+		almasPendientes = 0;
+
+		bannerTitulo = L"Busca las almas de poder";
+		bannerSub = L"Las almas de los ca\u00EDdos mejoran el poder de las calacas";
+		bannerTiempo = 5.0f;
+
+		ColocarAlmas();
+		hudTexto.clear();
+	}
+
+	// Se acabo el minuto: las almas que quedaron se reparten y pasa el dia.
+	void TerminarFaseAlmas()
+	{
+		// Si el jugador recogio un alma y no llego a elegir, se asigna al azar
+		while (almasPendientes > 0)
+			AsignarAlmaJugador(rand() % 3);
+
+		int perdidas = 0;
+		for (int i = 0; i < almasTotal; i++)
+			if (almaDisponible[i])
+				perdidas++;
+
+		RepartirAlmasPerdidas(perdidas);
+
+		faseAlmas = false;
+		almasTiempo = 0.0f;
+		hudTexto.clear();
+
+		AvanzarDia();
+	}
+
+	// Contador y recogida de almas. El minuto empieza cuando se va el aviso.
+	void ActualizarFaseAlmas()
+	{
+		if (bannerTiempo > 0.0f)
+		{
+			wchar_t buffer[96];
+			swprintf_s(buffer, L"Almas de poder: %d/%d", almasRecogidas, almasTotal);
+			hudTexto = buffer;
+			return;
+		}
+
+		almasTiempo -= deltaTime;
+
+		for (int i = 0; i < almasTotal; i++)
+		{
+			if (!almaDisponible[i])
+				continue;
+
+			float dx = almasPos[i].x - playerPos.x;
+			float dz = almasPos[i].z - playerPos.z;
+
+			if (dx * dx + dz * dz <= radioAlma * radioAlma)
+			{
+				almaDisponible[i] = false;
+				almasRecogidas++;
+				almasPendientes++;
+			}
+		}
+
+		if (almasTiempo <= 0.0f)
+		{
+			TerminarFaseAlmas();
+			return;
+		}
+
+		wchar_t buffer[160];
+		if (almasPendientes > 0)
+			swprintf_s(buffer, L"Almas de poder: %d/%d\nPulsa 1 Velocidad   2 Aceleraci\u00F3n   3 Resistencia",
+				almasRecogidas, almasTotal);
+		else
+			swprintf_s(buffer, L"Almas de poder: %d/%d", almasRecogidas, almasTotal);
+		hudTexto = buffer;
 	}
 
 	// HUD de los dias de entrenamiento: aviso cerca del punto y estado del dia
@@ -1349,7 +1539,14 @@ public:
 
 		// Las rivales empiezan sin mejoras, igual que el jugador
 		for (int i = 0; i < 4; i++)
+		{
 			calacasIA[i].mejoras[0] = calacasIA[i].mejoras[1] = calacasIA[i].mejoras[2] = 0;
+			calacasIA[i].mejorasExtra[0] = calacasIA[i].mejorasExtra[1] = calacasIA[i].mejorasExtra[2] = 0;
+		}
+
+		faseAlmas = false;
+		almasRecogidas = 0;
+		almasPendientes = 0;
 
 		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
 			puntosEntrenamiento[i].usadoSlot = false;
@@ -1369,13 +1566,16 @@ public:
 	// las mejoras que lleva acumuladas. Misma formula que usa la carrera.
 	void CalcularStatsIA(CalacaIA& ia)
 	{
-		ia.velocidad = velocidadBase * (1.0f + ia.porcentajeMejora * ia.mejoras[0]);
+		ia.velocidad = velocidadBase * (1.0f + ia.porcentajeMejora * ia.mejoras[0]
+			+ 0.08f * ia.mejorasExtra[0]);
 
-		float factorAceleracion = 1.0f - ia.porcentajeMejora * ia.mejoras[1];
+		float factorAceleracion = 1.0f - ia.porcentajeMejora * ia.mejoras[1]
+			- 0.08f * ia.mejorasExtra[1];
 		if (factorAceleracion < 0.2f) factorAceleracion = 0.2f;
 		ia.aceleracion = aceleracionBase * factorAceleracion;
 
-		ia.resistencia = resistenciaBase * (1.0f + ia.porcentajeMejora * ia.mejoras[2]);
+		ia.resistencia = resistenciaBase * (1.0f + ia.porcentajeMejora * ia.mejoras[2]
+			+ 0.08f * ia.mejorasExtra[2]);
 	}
 
 	// Prepara a las rivales al empezar la carrera: aplica las mejoras de los
@@ -1552,6 +1752,12 @@ public:
 		// Los dos primeros dias son de entrenamiento; la carrera es el tercero
 		if (diaActual < 3)
 		{
+			if (faseAlmas)
+			{
+				ActualizarFaseAlmas();
+				return;
+			}
+
 			ActualizarEntrenamiento();
 			return;
 		}
@@ -1706,10 +1912,8 @@ public:
 					autoCorriendo = false;
 					qteActivo = false;
 					tiempoMensaje = 6.0f;
-
-					wchar_t final[64];
-					swprintf_s(final, L"Carrera terminada!   %d\u00B0 lugar", RangoJugador());
-					hudTexto = final;
+					MostrarBannerFinal();
+					hudTexto.clear();
 					return;
 				}
 			}
@@ -1731,13 +1935,44 @@ public:
 				siguientePunto = 1;
 				hudTexto.clear();
 			}
-			else
-			{
-				wchar_t final[64];
-				swprintf_s(final, L"Carrera terminada!   %d\u00B0 lugar", RangoJugador());
-				hudTexto = final;
-			}
 		}
+	}
+
+	// Contador del minuto de las almas, arriba al centro de la pantalla.
+	void DibujarContadorAlmas()
+	{
+		if (!faseAlmas || bannerTiempo > 0.0f)
+			return;
+
+		int segundos = (int)ceilf(almasTiempo);
+		if (segundos < 0) segundos = 0;
+
+		wchar_t texto[32];
+		swprintf_s(texto, L"%d:%02d", segundos / 60, segundos % 60);
+
+		if (almasContadorDibujado != texto)
+		{
+			GenerarTextoBGRA(texto, almasContadorAncho, almasContadorAlto, almasContadorFuente,
+				255, 255, 255, almasContadorPixeles);
+			hudAlmasContador->SetTextureFromPixels((UINT)almasContadorAncho,
+				(UINT)almasContadorAlto, almasContadorPixeles.data());
+			almasContadorDibujado = texto;
+		}
+
+		float anchoFondo = almasContadorAncho + 40.0f;
+		float altoFondo = almasContadorAlto + 16.0f;
+		float x = (hudScreenW - anchoFondo) * 0.5f;
+		float y = 16.0f;
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		hudBannerFondo->DrawHUD(x, y, anchoFondo, altoFondo, hudScreenW, hudScreenH);
+		hudAlmasContador->DrawHUD(x + 20.0f, y + 8.0f,
+			(float)almasContadorAncho, (float)almasContadorAlto, hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
 
 	void DibujarHUD()
@@ -1788,6 +2023,7 @@ public:
 			DibujarTablaStats();
 		}
 
+		DibujarContadorAlmas();
 		DibujarBanner();
 	}
 
@@ -1991,6 +2227,12 @@ public:
 			clave += std::to_wstring(calacasIA[i].mejoras[1]);
 			clave += L",";
 			clave += std::to_wstring(calacasIA[i].mejoras[2]);
+			clave += L"|";
+			clave += std::to_wstring(calacasIA[i].mejorasExtra[0]);
+			clave += L",";
+			clave += std::to_wstring(calacasIA[i].mejorasExtra[1]);
+			clave += L",";
+			clave += std::to_wstring(calacasIA[i].mejorasExtra[2]);
 		}
 
 		if (clave != tablaClave)
@@ -2137,6 +2379,36 @@ public:
 			anillo->UpdateScene(escala * rotX * traslacion);
 			anillo->DrawScene(camara);
 		}
+	}
+
+	// Almas de poder: una llama vertical que flota sobre el suelo.
+	void DibujarAlmas()
+	{
+		if (!faseAlmas)
+			return;
+
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		for (int i = 0; i < almasTotal; i++)
+		{
+			if (!almaDisponible[i])
+				continue;
+
+			// Flota y late un poco, cada una con su propio ritmo
+			float fase = g_Time * 3.0f + i * 1.3f;
+			float flotar = 0.25f * sinf(fase);
+			float pulso = 1.0f + 0.05f * sinf(fase * 1.7f);
+
+			D3DXMATRIX escala, traslacion;
+			D3DXMatrixScaling(&escala, pulso, pulso, pulso);
+			D3DXMatrixTranslation(&traslacion, almasPos[i].x,
+				almasPos[i].y + 3.0f + flotar, almasPos[i].z);
+
+			almaObjetos[i]->UpdateScene(escala * traslacion);
+			almaObjetos[i]->DrawScene(camara);
+		}
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
 	}
 
 	// Flecha en pantalla que apunta al siguiente checkpoint.
@@ -2287,6 +2559,15 @@ public:
 		hudTeclaEspacio->SetTextureFromPixels((UINT)teclaAncho, (UINT)teclaAlto,
 			teclaEspacioPixeles.data());
 
+		// Almas de poder: billboards con la llama generada en CPU
+		for (int i = 0; i < almasTotal; i++)
+		{
+			almaObjetos[i] = new MPrimitives(d3d11Device, d3d11DevCon, 7.0f, 3.2f, L"", ShaderTexto);
+			GenerarAlmaBGRA(96, 256, i * 1.7f + 0.4f, almaPixeles);
+			almaObjetos[i]->SetTextureFromPixels(96, 256, almaPixeles.data());
+		}
+		hudAlmasContador = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+
 		// Diamante verde de la calaca del jugador y calacas rivales
 		diamanteJugador = new MPrimitives(d3d11Device, d3d11DevCon, L"", ShaderDiffuse);
 		for (int i = 0; i < 4; i++)
@@ -2306,6 +2587,7 @@ public:
 			calacasIA[i].porcentajeMejora = porcentajesIA[i];
 			calacasIA[i].probabilidadAro = probabilidadesIA[i];
 			calacasIA[i].mejoras[0] = calacasIA[i].mejoras[1] = calacasIA[i].mejoras[2] = 0;
+			calacasIA[i].mejorasExtra[0] = calacasIA[i].mejorasExtra[1] = calacasIA[i].mejorasExtra[2] = 0;
 			calacasIA[i].pos = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
 			calacasIA[i].velocidad = 0.0f;
 			calacasIA[i].aceleracion = 0.0f;
@@ -2719,6 +3001,7 @@ public:
 		skydomo->DrawScene(skyCamara);
 
 		DibujarMarcadores();
+		DibujarAlmas();
 
 		// Debug de colisiones: mantener C presionada para verlas en rojo
 		if (showColliders)
