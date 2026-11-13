@@ -212,7 +212,14 @@ private:
 	int posicionFuente = 96;
 	int rangoDibujado = -1;
 
-	// Quick time event del aro: 4 flechas aleatorias en 1.5 segundos.
+	// Tabla de stats de las calacas rivales (esquina superior derecha)
+	MPrimitives* hudTabla = nullptr;
+	std::vector<unsigned char> tablaPixeles;
+	std::wstring tablaClave;
+	int tablaAncho = 730;
+	int tablaAlto = 264;
+
+	// Quick time event del aro: 4 flechas aleatorias en 2 segundos.
 	// 0 = arriba, 1 = derecha, 2 = abajo, 3 = izquierda
 	bool qteActivo = false;
 	int qteSecuencia[4] = { 0, 0, 0, 0 };
@@ -1063,7 +1070,7 @@ public:
 	}
 
 	// Lanza el quick time event de un aro: 4 flechas al azar (se pueden repetir)
-	// y 1.5 segundos para pulsarlas en orden.
+	// y 2 segundos para pulsarlas en orden.
 	void IniciarQTE()
 	{
 		for (int i = 0; i < 4; i++)
@@ -1074,7 +1081,7 @@ public:
 		}
 
 		qteProgreso = 0;
-		qteTiempo = 1.5f;
+		qteTiempo = 2.0f;
 		qteActivo = true;
 	}
 
@@ -1318,6 +1325,19 @@ public:
 			calacasIA[i].mejoras[rand() % 3]++;
 	}
 
+	// Calcula velocidad, aceleracion y resistencia efectivas de una rival con
+	// las mejoras que lleva acumuladas. Misma formula que usa la carrera.
+	void CalcularStatsIA(CalacaIA& ia)
+	{
+		ia.velocidad = velocidadBase * (1.0f + ia.porcentajeMejora * ia.mejoras[0]);
+
+		float factorAceleracion = 1.0f - ia.porcentajeMejora * ia.mejoras[1];
+		if (factorAceleracion < 0.2f) factorAceleracion = 0.2f;
+		ia.aceleracion = aceleracionBase * factorAceleracion;
+
+		ia.resistencia = resistenciaBase * (1.0f + ia.porcentajeMejora * ia.mejoras[2]);
+	}
+
 	// Prepara a las rivales al empezar la carrera: aplica las mejoras de los
 	// dos dias de entrenamiento y las coloca en la linea de salida.
 	void IniciarCalacasIA()
@@ -1330,13 +1350,7 @@ public:
 		{
 			CalacaIA &ia = calacasIA[i];
 
-			ia.velocidad = velocidadBase * (1.0f + ia.porcentajeMejora * ia.mejoras[0]);
-
-			float factorAceleracion = 1.0f - ia.porcentajeMejora * ia.mejoras[1];
-			if (factorAceleracion < 0.2f) factorAceleracion = 0.2f;
-			ia.aceleracion = aceleracionBase * factorAceleracion;
-
-			ia.resistencia = resistenciaBase * (1.0f + ia.porcentajeMejora * ia.mejoras[2]);
+			CalcularStatsIA(ia);
 
 			ia.pos = D3DXVECTOR3(puntosRuta[0].x + desvio[i][0], 0.0f,
 				puntosRuta[0].y + desvio[i][1]);
@@ -1448,14 +1462,10 @@ public:
 		}
 	}
 
-	// Progreso en la carrera: mas alto = mas adelante. Los que ya llegaron
-	// quedan ordenados por su tiempo de llegada.
+	// Progreso en la carrera: mas alto = mas adelante.
 	float ProgresoCalacaIA(int i)
 	{
 		CalacaIA &ia = calacasIA[i];
-		if (ia.terminado)
-			return 1e9f - ia.tiempoLlegada;
-
 		float dx = puntosRuta[ia.siguientePunto].x - ia.pos.x;
 		float dz = puntosRuta[ia.siguientePunto].y - ia.pos.z;
 		return (ia.siguientePunto - 1) * 10000.0f - sqrtf(dx * dx + dz * dz);
@@ -1463,9 +1473,6 @@ public:
 
 	float ProgresoJugador()
 	{
-		if (estadoCarrera == CarreraTerminada || siguientePunto >= (int)puntosRuta.size())
-			return 1e9f - tiempoLlegadaJugador;
-
 		float dx = puntosRuta[siguientePunto].x - playerPos.x;
 		float dz = puntosRuta[siguientePunto].y - playerPos.z;
 		return (siguientePunto - 1) * 10000.0f - sqrtf(dx * dx + dz * dz);
@@ -1473,13 +1480,25 @@ public:
 
 	int RangoJugador()
 	{
-		float progreso = ProgresoJugador();
+		bool llegue = (estadoCarrera == CarreraTerminada || siguientePunto >= (int)puntosRuta.size());
 		int rango = 1;
 
 		for (int i = 0; i < 4; i++)
 		{
-			if (ProgresoCalacaIA(i) > progreso)
+			CalacaIA &ia = calacasIA[i];
+
+			if (llegue)
+			{
+				// Ya termine: solo me superan las que llegaron antes que yo.
+				// (Comparar tiempos directamente evita que el float pierda
+				// precision y empate llegadas con pocos segundos de diferencia.)
+				if (ia.terminado && ia.tiempoLlegada < tiempoLlegadaJugador)
+					rango++;
+			}
+			else if (ia.terminado || ProgresoCalacaIA(i) > ProgresoJugador())
+			{
 				rango++;
+			}
 		}
 
 		return rango;
@@ -1705,7 +1724,10 @@ public:
 		}
 
 		if (!modoRuta)
+		{
 			DibujarPosicion();
+			DibujarTablaStats();
+		}
 
 		DibujarBanner();
 	}
@@ -1759,7 +1781,7 @@ public:
 	}
 
 	// Quick time event del aro: las 4 flechas de la secuencia arriba al centro y
-	// una barra que se encoge con el contrarreloj de 1.5 segundos.
+	// una barra que se encoge con el contrarreloj de 2 segundos.
 	void DibujarQTE()
 	{
 		if (!qteActivo)
@@ -1798,7 +1820,7 @@ public:
 		// Contrarreloj: pista oscura y relleno que se encoge
 		float barraAlto = 14.0f;
 		float barraY = y + lado + 16.0f;
-		float fraccion = qteTiempo / 1.5f;
+		float fraccion = qteTiempo / 2.0f;
 		if (fraccion < 0.0f) fraccion = 0.0f;
 		if (fraccion > 1.0f) fraccion = 1.0f;
 
@@ -1842,6 +1864,74 @@ public:
 		float x = 30.0f;
 		float y = hudScreenH - posicionAlto - 70.0f;
 		hudPosicion->DrawHUD(x, y, (float)posicionAncho, (float)posicionAlto, hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+	}
+
+	// Tabla de stats de las rivales en la esquina superior derecha. En los dias
+	// de entrenamiento los valores se ocultan con "?" y el dia de la carrera se
+	// muestran los reales. Solo se regenera la textura cuando cambian los datos.
+	void DibujarTablaStats()
+	{
+		if (bannerTiempo > 0.0f)
+			return;
+
+		std::wstring clave = std::to_wstring(diaActual);
+		for (int i = 0; i < 4; i++)
+		{
+			CalcularStatsIA(calacasIA[i]);
+			clave += L"|";
+			clave += std::to_wstring(calacasIA[i].mejoras[0]);
+			clave += L",";
+			clave += std::to_wstring(calacasIA[i].mejoras[1]);
+			clave += L",";
+			clave += std::to_wstring(calacasIA[i].mejoras[2]);
+		}
+
+		if (clave != tablaClave)
+		{
+			const wchar_t* celdas[5][4];
+			wchar_t textos[4][3][32];
+
+			celdas[0][0] = L"Calaca";
+			celdas[0][1] = L"Velocidad";
+			celdas[0][2] = L"Aceleraci\u00F3n";
+			celdas[0][3] = L"Resistencia";
+
+			for (int i = 0; i < 4; i++)
+			{
+				celdas[i + 1][0] = calacasIA[i].nombre;
+
+				if (diaActual >= 3)
+				{
+					swprintf_s(textos[i][0], L"%.1f", calacasIA[i].velocidad);
+					swprintf_s(textos[i][1], L"%.2f s", calacasIA[i].aceleracion);
+					swprintf_s(textos[i][2], L"%.1f", calacasIA[i].resistencia);
+					celdas[i + 1][1] = textos[i][0];
+					celdas[i + 1][2] = textos[i][1];
+					celdas[i + 1][3] = textos[i][2];
+				}
+				else
+				{
+					celdas[i + 1][1] = L"?";
+					celdas[i + 1][2] = L"?";
+					celdas[i + 1][3] = L"?";
+				}
+			}
+
+			GenerarTablaBGRA(tablaAncho, tablaAlto, celdas, tablaPixeles);
+			hudTabla->SetTextureFromPixels((UINT)tablaAncho, (UINT)tablaAlto,
+				tablaPixeles.data());
+			tablaClave = clave;
+		}
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		float x = (float)(hudScreenW - tablaAncho - 20);
+		float y = 20.0f;
+		hudTabla->DrawHUD(x, y, (float)tablaAncho, (float)tablaAlto, hudScreenW, hudScreenH);
 
 		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
@@ -2086,6 +2176,7 @@ public:
 		hudBannerTitulo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudBannerSub = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudPosicion = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudTabla = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 
 		// Diamante verde de la calaca del jugador y calacas rivales
 		diamanteJugador = new MPrimitives(d3d11Device, d3d11DevCon, L"", ShaderDiffuse);

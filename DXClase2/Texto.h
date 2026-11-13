@@ -278,4 +278,107 @@ inline void GenerarPanelBGRA(int ancho, int alto,
 	DeleteObject(dib);
 }
 
+// Tabla de estadisticas de las calacas rivales: 5 filas (cabecera + 4 calacas)
+// y 4 columnas (nombre, velocidad, aceleracion, resistencia). Las celdas son
+// opacas, con los colores de la tabla y el texto en negro.
+inline void GenerarTablaBGRA(int ancho, int alto,
+	const wchar_t* celdas[5][4], std::vector<unsigned char>& bgra)
+{
+	bgra.assign((size_t)ancho * alto * 4, 0);
+
+	BITMAPINFO bi;
+	ZeroMemory(&bi, sizeof(bi));
+	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth = ancho;
+	bi.bmiHeader.biHeight = -alto;	// negativo = fila superior primero
+	bi.bmiHeader.biPlanes = 1;
+	bi.bmiHeader.biBitCount = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+
+	void* bits = NULL;
+	HBITMAP dib = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+	if (dib == NULL || bits == NULL)
+		return;
+
+	HDC dc = CreateCompatibleDC(NULL);
+	HGDIOBJ oldBmp = SelectObject(dc, dib);
+	PatBlt(dc, 0, 0, ancho, alto, BLACKNESS);
+
+	// Limites de las columnas y de las filas
+	const int columnas[5] = { 0, 300, 430, 580, ancho };
+	const int filas[6] = { 0, 56, 108, 160, 212, alto };
+
+	// Cabecera con colores vivos y cuerpo con los mismos colores aclarados
+	const COLORREF cabecera[4] = {
+		RGB(232, 160, 216), RGB(160, 216, 240), RGB(255, 200, 100), RGB(170, 230, 160)
+	};
+	const COLORREF cuerpo[4] = {
+		RGB(250, 220, 242), RGB(222, 242, 252), RGB(255, 236, 200), RGB(224, 250, 218)
+	};
+
+	HFONT fuente = CreateFontW(-27, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+	HGDIOBJ oldFuente = SelectObject(dc, fuente);
+	SetBkMode(dc, TRANSPARENT);
+	SetTextColor(dc, RGB(0, 0, 0));
+
+	for (int f = 0; f < 5; f++)
+	{
+		for (int c = 0; c < 4; c++)
+		{
+			RECT r = { columnas[c], filas[f], columnas[c + 1], filas[f + 1] };
+
+			HBRUSH pincel = CreateSolidBrush(f == 0 ? cabecera[c] : cuerpo[c]);
+			FillRect(dc, &r, pincel);
+			DeleteObject(pincel);
+
+			if (celdas[f][c] != NULL)
+				DrawTextW(dc, celdas[f][c], -1, &r,
+					DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+		}
+	}
+
+	// Cuadricula blanca entre celdas
+	HPEN pluma = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+	HGDIOBJ oldPluma = SelectObject(dc, pluma);
+	for (int c = 1; c < 4; c++)
+	{
+		MoveToEx(dc, columnas[c], 0, NULL);
+		LineTo(dc, columnas[c], alto);
+	}
+	for (int f = 1; f < 5; f++)
+	{
+		MoveToEx(dc, 0, filas[f], NULL);
+		LineTo(dc, ancho, filas[f]);
+	}
+
+	// Borde exterior negro
+	HPEN borde = CreatePen(PS_SOLID, 2, RGB(0, 0, 0));
+	SelectObject(dc, borde);
+	HGDIOBJ oldPincel = SelectObject(dc, GetStockObject(NULL_BRUSH));
+	Rectangle(dc, 1, 1, ancho - 1, alto - 1);
+	SelectObject(dc, oldPincel);
+	SelectObject(dc, oldPluma);
+	DeleteObject(borde);
+	DeleteObject(pluma);
+
+	SelectObject(dc, oldFuente);
+	DeleteObject(fuente);
+	SelectObject(dc, oldBmp);
+	DeleteDC(dc);
+
+	// La tabla es opaca: se copia el color tal cual y alfa 255
+	unsigned char* p = (unsigned char*)bits;
+	for (int i = 0; i < ancho * alto; i++)
+	{
+		bgra[i * 4 + 0] = p[i * 4 + 0];
+		bgra[i * 4 + 1] = p[i * 4 + 1];
+		bgra[i * 4 + 2] = p[i * 4 + 2];
+		bgra[i * 4 + 3] = 255;
+	}
+
+	DeleteObject(dib);
+}
+
 #endif
