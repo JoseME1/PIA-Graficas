@@ -2,6 +2,7 @@
 #define _Texto_
 
 #include <vector>
+#include <math.h>
 
 // Genera en 'bgra' una imagen BGRA (fila superior primero, con alfa) del texto
 // centrado sobre fondo transparente, usando GDI.
@@ -407,6 +408,254 @@ inline void GenerarTablaBGRA(int ancho, int alto,
 			bgra[i * 4 + 3] = (r == GetRValue(relleno) && g == GetGValue(relleno) &&
 				b == GetBValue(relleno)) ? 175 : 255;
 		}
+	}
+
+	DeleteObject(dib);
+}
+
+// Ulti: anillo que se llena de fuego con una calavera roja en el centro.
+// 'carga' va de 0 a 1 (fraccion del anillo encendida) y 'semilla' cambia la
+// forma de las llamas para que titilen al regenerar la textura.
+inline void GenerarUltiBGRA(int ancho, int alto, float carga, int semilla,
+	std::vector<unsigned char>& bgra)
+{
+	bgra.assign((size_t)ancho * alto * 4, 0);
+
+	BITMAPINFO bi;
+	ZeroMemory(&bi, sizeof(bi));
+	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth = ancho;
+	bi.bmiHeader.biHeight = -alto;	// negativo = fila superior primero
+	bi.bmiHeader.biPlanes = 1;
+	bi.bmiHeader.biBitCount = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+
+	void* bits = NULL;
+	HBITMAP dib = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+	if (dib == NULL || bits == NULL)
+		return;
+
+	HDC dc = CreateCompatibleDC(NULL);
+	HGDIOBJ oldBmp = SelectObject(dc, dib);
+
+	// Magenta de clave: esos pixeles quedan transparentes al copiar
+	HBRUSH clave = CreateSolidBrush(RGB(255, 0, 255));
+	RECT todo = { 0, 0, ancho, alto };
+	FillRect(dc, &todo, clave);
+	DeleteObject(clave);
+
+	const float cx = ancho * 0.5f;
+	const float cy = alto * 0.5f;
+	const float radio = ancho * 0.5f - 3.0f;
+	const float grosor = ancho * 0.085f;
+	const float radioMedio = radio - grosor * 0.5f;
+
+	HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+
+	// Anillo de fondo apagado
+	HPEN penFondo = CreatePen(PS_SOLID, (int)grosor, RGB(30, 34, 48));
+	HGDIOBJ oldPen = SelectObject(dc, penFondo);
+	Ellipse(dc, (int)(cx - radioMedio), (int)(cy - radioMedio),
+		(int)(cx + radioMedio), (int)(cy + radioMedio));
+
+	// Fuego: recorre el arco desde arriba en sentido horario. La punta que
+	// avanza queda amarilla y la cola roja, como si la carga se estuviera
+	// quemando.
+	if (carga > 0.001f)
+	{
+		const float dosPi = 6.2831853f;
+		float anguloTotal = carga * dosPi;
+		int pasos = (int)(carga * 140.0f) + 2;
+
+		// Sin pluma: cada llama es un circulo relleno, no un aro
+		HGDIOBJ oldPenFuego = SelectObject(dc, GetStockObject(NULL_PEN));
+
+		for (int i = 0; i <= pasos; i++)
+		{
+			float t = (float)i / pasos;
+			float angulo = -1.5707963f + t * anguloTotal;
+
+			// Ondulacion del radio para que parezca llama
+			float onda = sinf(angulo * 7.0f + semilla * 1.3f) * grosor * 0.14f
+				+ sinf(angulo * 17.0f + semilla * 2.1f) * grosor * 0.07f;
+			float x = cx + cosf(angulo) * (radioMedio + onda);
+			float y = cy + sinf(angulo) * (radioMedio + onda);
+
+			int r, g, b;
+			if (t > 0.88f)		{ r = 255; g = 240; b = 140; }	// punta
+			else if (t > 0.60f)	{ r = 255; g = 175; b = 55; }	// naranja
+			else				{ r = 220; g = 65; b = 22; }	// cola
+
+			float pulso = 0.88f + 0.12f * sinf(angulo * 11.0f + semilla * 0.9f);
+			r = (int)(r * pulso);
+			g = (int)(g * pulso);
+			b = (int)(b * pulso);
+
+			HBRUSH llama = CreateSolidBrush(RGB(r, g, b));
+			HGDIOBJ oldB = SelectObject(dc, llama);
+
+			float radioLlama = grosor * 0.72f;
+			Ellipse(dc, (int)(x - radioLlama), (int)(y - radioLlama),
+				(int)(x + radioLlama), (int)(y + radioLlama));
+
+			SelectObject(dc, oldB);
+			DeleteObject(llama);
+		}
+
+		SelectObject(dc, oldPenFuego);
+	}
+
+	// Calavera roja con contorno negro
+	HBRUSH rojo = CreateSolidBrush(RGB(220, 40, 40));
+	HPEN negro = CreatePen(PS_SOLID, 3, RGB(0, 0, 0));
+	HGDIOBJ oldB2 = SelectObject(dc, rojo);
+	HGDIOBJ oldP2 = SelectObject(dc, negro);
+
+	float cw = ancho * 0.34f;	// ancho del craneo
+	float ch = alto * 0.36f;	// alto del craneo
+	float arriba = cy - ch * 0.62f;
+	float abajo = arriba + ch;
+
+	Ellipse(dc, (int)(cx - cw * 0.5f), (int)arriba,
+		(int)(cx + cw * 0.5f), (int)abajo);
+
+	RoundRect(dc, (int)(cx - cw * 0.36f), (int)(abajo - ch * 0.12f),
+		(int)(cx + cw * 0.36f), (int)(abajo + ch * 0.42f),
+		(int)(cw * 0.25f), (int)(ch * 0.18f));
+
+	// Cuencas, nariz y dientes en negro
+	HBRUSH negroRelleno = CreateSolidBrush(RGB(0, 0, 0));
+	SelectObject(dc, negroRelleno);
+
+	float ojoW = cw * 0.30f, ojoH = ch * 0.30f;
+	float ojoY = cy - ch * 0.05f;
+	Ellipse(dc, (int)(cx - cw * 0.27f - ojoW * 0.5f), (int)(ojoY - ojoH * 0.5f),
+		(int)(cx - cw * 0.27f + ojoW * 0.5f), (int)(ojoY + ojoH * 0.5f));
+	Ellipse(dc, (int)(cx + cw * 0.27f - ojoW * 0.5f), (int)(ojoY - ojoH * 0.5f),
+		(int)(cx + cw * 0.27f + ojoW * 0.5f), (int)(ojoY + ojoH * 0.5f));
+
+	POINT nariz[3] = {
+		{ (LONG)cx, (LONG)(cy + ch * 0.02f) },
+		{ (LONG)(cx - cw * 0.09f), (LONG)(cy + ch * 0.20f) },
+		{ (LONG)(cx + cw * 0.09f), (LONG)(cy + ch * 0.20f) }
+	};
+	Polygon(dc, nariz, 3);
+
+	for (int i = -2; i <= 2; i++)
+	{
+		float x = cx + i * cw * 0.075f;
+		MoveToEx(dc, (int)x, (int)(abajo - 2.0f), NULL);
+		LineTo(dc, (int)x, (int)(abajo + ch * 0.28f));
+	}
+
+	SelectObject(dc, oldB2);
+	SelectObject(dc, oldP2);
+	DeleteObject(rojo);
+	DeleteObject(negro);
+	DeleteObject(negroRelleno);
+
+	SelectObject(dc, oldBrush);
+	SelectObject(dc, oldPen);
+	DeleteObject(penFondo);
+
+	SelectObject(dc, oldBmp);
+	DeleteDC(dc);
+
+	// Copia con alfa: magenta = fondo transparente, anillo apagado translucido
+	unsigned char* p = (unsigned char*)bits;
+	for (int i = 0; i < ancho * alto; i++)
+	{
+		unsigned char b = p[i * 4 + 0];
+		unsigned char g = p[i * 4 + 1];
+		unsigned char r = p[i * 4 + 2];
+
+		bgra[i * 4 + 0] = b;
+		bgra[i * 4 + 1] = g;
+		bgra[i * 4 + 2] = r;
+
+		if (r == 255 && g == 0 && b == 255)
+			bgra[i * 4 + 3] = 0;
+		else if (r == 30 && g == 34 && b == 48)
+			bgra[i * 4 + 3] = 180;
+		else
+			bgra[i * 4 + 3] = 255;
+	}
+
+	DeleteObject(dib);
+}
+
+// Tecla de espacio que avisa que la ulti esta lista.
+inline void GenerarTeclaEspacioBGRA(int ancho, int alto, std::vector<unsigned char>& bgra)
+{
+	bgra.assign((size_t)ancho * alto * 4, 0);
+
+	BITMAPINFO bi;
+	ZeroMemory(&bi, sizeof(bi));
+	bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+	bi.bmiHeader.biWidth = ancho;
+	bi.bmiHeader.biHeight = -alto;	// negativo = fila superior primero
+	bi.bmiHeader.biPlanes = 1;
+	bi.bmiHeader.biBitCount = 32;
+	bi.bmiHeader.biCompression = BI_RGB;
+
+	void* bits = NULL;
+	HBITMAP dib = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, &bits, NULL, 0);
+	if (dib == NULL || bits == NULL)
+		return;
+
+	HDC dc = CreateCompatibleDC(NULL);
+	HGDIOBJ oldBmp = SelectObject(dc, dib);
+
+	HBRUSH clave = CreateSolidBrush(RGB(255, 0, 255));
+	RECT todo = { 0, 0, ancho, alto };
+	FillRect(dc, &todo, clave);
+	DeleteObject(clave);
+
+	HBRUSH fondo = CreateSolidBrush(RGB(15, 18, 28));
+	HPEN borde = CreatePen(PS_SOLID, 4, RGB(230, 220, 190));
+	HGDIOBJ oldB = SelectObject(dc, fondo);
+	HGDIOBJ oldP = SelectObject(dc, borde);
+
+	RoundRect(dc, 3, 3, ancho - 3, alto - 3, 26, 26);
+
+	HFONT fuente = CreateFontW(-30, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+	HGDIOBJ oldFuente = SelectObject(dc, fuente);
+	SetBkMode(dc, TRANSPARENT);
+	SetTextColor(dc, RGB(255, 255, 255));
+
+	RECT r = { 0, 0, ancho, alto };
+	DrawTextW(dc, L"ESPACIO", -1, &r,
+		DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+	SelectObject(dc, oldFuente);
+	DeleteObject(fuente);
+	SelectObject(dc, oldB);
+	SelectObject(dc, oldP);
+	DeleteObject(fondo);
+	DeleteObject(borde);
+
+	SelectObject(dc, oldBmp);
+	DeleteDC(dc);
+
+	unsigned char* p = (unsigned char*)bits;
+	for (int i = 0; i < ancho * alto; i++)
+	{
+		unsigned char b = p[i * 4 + 0];
+		unsigned char g = p[i * 4 + 1];
+		unsigned char r = p[i * 4 + 2];
+
+		bgra[i * 4 + 0] = b;
+		bgra[i * 4 + 1] = g;
+		bgra[i * 4 + 2] = r;
+
+		if (r == 255 && g == 0 && b == 255)
+			bgra[i * 4 + 3] = 0;
+		else if (r == 15 && g == 18 && b == 28)
+			bgra[i * 4 + 3] = 205;
+		else
+			bgra[i * 4 + 3] = 255;
 	}
 
 	DeleteObject(dib);

@@ -39,7 +39,6 @@ private:
 	MPrimitives *skydomo;
 	MPrimitives *terreno;
 	MPrimitives* agua;
-	MPrimitives *Bitmap;
 
 	//MIS MODELOS
 	MPrimitives *arbol;
@@ -218,6 +217,26 @@ private:
 	std::wstring tablaClave;
 	int tablaAncho = 548;
 	int tablaAlto = 198;
+
+	// Ulti: circulo de fuego con una calavera (esquina superior izquierda)
+	MPrimitives* hudUlti = nullptr;
+	std::vector<unsigned char> ultiPixeles;
+	int ultiAncho = 200;
+	int ultiAlto = 200;
+	int ultiCargaDibujada = -1;
+	int ultiSemilla = 0;
+	float ultiFlicker = 0.0f;
+
+	// Tecla de espacio que avisa cuando la ulti esta lista
+	MPrimitives* hudTeclaEspacio = nullptr;
+	std::vector<unsigned char> teclaEspacioPixeles;
+	int teclaAncho = 280;
+	int teclaAlto = 84;
+
+	// Estado de la ulti
+	float cargaUlti = 0.0f;		// 0 = vacia, 1 = lista para usar
+	float ultiTiempo = 0.0f;	// segundos que le quedan a la ulti activa
+	bool spaceUltiLast = false;
 
 	// Quick time event del aro: 4 flechas aleatorias en 2 segundos.
 	// 0 = arriba, 1 = derecha, 2 = abajo, 3 = izquierda
@@ -717,6 +736,15 @@ public:
 							resistenciaActual += 0.25f;
 							if (resistenciaActual > 1.0f)
 								resistenciaActual = 1.0f;
+
+							// y +20% de carga de la ulti (salvo que ya este activa)
+							if (ultiTiempo <= 0.0f)
+							{
+								cargaUlti += 0.20f;
+								if (cargaUlti > 1.0f)
+									cargaUlti = 1.0f;
+							}
+
 							qteActivo = false;
 						}
 					}
@@ -729,6 +757,16 @@ public:
 				qteLast[i] = down;
 			}
 		}
+
+		// Espacio: activa la ulti cuando la carga esta completa
+		bool spaceDown = (keyboardState[DIK_SPACE] != 0);
+		if (spaceDown && !spaceUltiLast && !modoRuta && !modoCamara &&
+			estadoCarrera == CarreraCorriendo && cargaUlti >= 1.0f && ultiTiempo <= 0.0f)
+		{
+			ultiTiempo = 2.0f;
+			velocidadActual *= 1.3f;	// empujon instantaneo del 30%
+		}
+		spaceUltiLast = spaceDown;
 
 		// E: durante los dias de entrenamiento entrena en el punto cercano;
 		// el dia de la carrera la usa para arrancar junto a la meta.
@@ -754,6 +792,8 @@ public:
 					velocidadActual = 0.0f;		// arranca parada y acelera
 					resistenciaActual = 1.0f;	// resistencia llena
 					qteActivo = false;
+					cargaUlti = 0.0f;			// la ulti arranca vacia
+					ultiTiempo = 0.0f;
 					arosUsados.assign(arosResistencia.size(), false);	// aros disponibles otra vez
 					IniciarCalacasIA();		// rivales en la linea de salida
 				}
@@ -1554,6 +1594,20 @@ public:
 		{
 			ActualizarCalacasIA();
 
+			// Ulti: mientras esta activa se apaga en 2 segundos; si no, se
+			// recarga sola un 3% por segundo.
+			if (ultiTiempo > 0.0f)
+			{
+				ultiTiempo -= deltaTime;
+				if (ultiTiempo < 0.0f) ultiTiempo = 0.0f;
+				cargaUlti = ultiTiempo / 2.0f;
+			}
+			else
+			{
+				cargaUlti += 0.03f * deltaTime;
+				if (cargaUlti > 1.0f) cargaUlti = 1.0f;
+			}
+
 			float dx = puntosRuta[siguientePunto].x - playerPos.x;
 			float dz = puntosRuta[siguientePunto].y - playerPos.z;
 			float distancia = sqrtf(dx * dx + dz * dz);
@@ -1565,6 +1619,10 @@ public:
 				// aceleracion se reducen, asi que cuesta mas llegar a la meta.
 				float penalizacion = PenalizacionResistencia();
 				float velocidadObjetivo = velocidadCarrera * (1.0f - penalizacion);
+
+				// La ulti da un 30% mas de velocidad mientras esta activa
+				if (ultiTiempo > 0.0f)
+					velocidadObjetivo *= 1.3f;
 
 				float tiempoAceleracion = TiempoAceleracion();
 				if (tiempoAceleracion < 0.01f) tiempoAceleracion = 0.01f;
@@ -1721,6 +1779,7 @@ public:
 			DibujarFlechaHUD();
 			DibujarPanelEstadisticas();
 			DibujarQTE();
+			DibujarUlti();
 		}
 
 		if (!modoRuta)
@@ -1827,6 +1886,51 @@ public:
 		hudQteBarraFondo->DrawHUD(x0, barraY, total, barraAlto, hudScreenW, hudScreenH);
 		if (fraccion > 0.001f)
 			hudQteBarra->DrawHUD(x0, barraY, total * fraccion, barraAlto, hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+	}
+
+	// Ulti en la esquina superior izquierda: circulo de fuego con calavera.
+	// Cuando esta completa aparece la tecla de espacio latiendo abajo al centro.
+	void DibujarUlti()
+	{
+		if (estadoCarrera != CarreraCorriendo || modoRuta)
+			return;
+
+		int paso = (int)(cargaUlti * 100.0f);
+		if (paso > 100) paso = 100;
+
+		// Se regenera al cambiar el porcentaje y, ya llena, cada 0.12 s para
+		// que las llamas titilen.
+		ultiFlicker -= deltaTime;
+		if (paso != ultiCargaDibujada || (paso >= 100 && ultiFlicker <= 0.0f))
+		{
+			GenerarUltiBGRA(ultiAncho, ultiAlto, cargaUlti, ultiSemilla, ultiPixeles);
+			hudUlti->SetTextureFromPixels((UINT)ultiAncho, (UINT)ultiAlto,
+				ultiPixeles.data());
+			ultiCargaDibujada = paso;
+			ultiSemilla++;
+			ultiFlicker = 0.12f;
+		}
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		hudUlti->DrawHUD(30.0f, 30.0f, (float)ultiAncho, (float)ultiAlto,
+			hudScreenW, hudScreenH);
+
+		// Tecla de espacio: late mientras la ulti esta lista
+		if (paso >= 100)
+		{
+			float escala = 1.02f + 0.08f * sinf(relojCarrera * 9.0f);
+			float ancho = teclaAncho * escala;
+			float alto = teclaAlto * escala;
+			float x = (hudScreenW - ancho) * 0.5f;
+			float y = hudScreenH - alto - 60.0f;
+
+			hudTeclaEspacio->DrawHUD(x, y, ancho, alto, hudScreenW, hudScreenH);
+		}
 
 		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
@@ -2177,6 +2281,11 @@ public:
 		hudBannerSub = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudPosicion = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudTabla = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudUlti = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudTeclaEspacio = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		GenerarTeclaEspacioBGRA(teclaAncho, teclaAlto, teclaEspacioPixeles);
+		hudTeclaEspacio->SetTextureFromPixels((UINT)teclaAncho, (UINT)teclaAlto,
+			teclaEspacioPixeles.data());
 
 		// Diamante verde de la calaca del jugador y calacas rivales
 		diamanteJugador = new MPrimitives(d3d11Device, d3d11DevCon, L"", ShaderDiffuse);
@@ -2229,8 +2338,6 @@ public:
 		IniciarDias();
 		CargarVistas();
 		vKeyLast = false;
-		//esta es la gui
-		Bitmap = new MPrimitives(d3d11Device, d3d11DevCon, 1, 1, L"Texturas/Health.png", camara);
 		// Colisiones: circulos para los objetos chicos, paredes para el castillo
 		colliders[0] = { 110.0f, 130.0f, 2.0f };  // arbol
 		colliders[1] = { 160.0f, 155.0f, 1.0f };  // barril
@@ -2612,10 +2719,6 @@ public:
 		skydomo->DrawScene(skyCamara);
 
 		DibujarMarcadores();
-
-		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
-		Bitmap->DrawBitmap(camara);
-		d3d11DevCon->OMSetDepthStencilState(nullptr, 0);
 
 		// Debug de colisiones: mantener C presionada para verlas en rojo
 		if (showColliders)
