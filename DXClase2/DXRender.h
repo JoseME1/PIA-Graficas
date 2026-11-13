@@ -294,18 +294,23 @@ private:
 
 	// Fase de las almas de poder: al terminar el 4to entrenamiento de los dias
 	// 1 y 2 aparece un aviso y despues un minuto para juntar 5 almas repartidas
-	// por el mapa. Cada alma recogida sube un nivel el stat que elija el jugador.
+	// por el mapa.
 	static const int almasTotal = 5;
 	bool faseAlmas = false;
 	float almasTiempo = 60.0f;
 	int almasRecogidas = 0;
-	int almasPendientes = 0;		// almas recogidas que faltan asignar a un stat
 	float radioAlma = 5.0f;
 	D3DXVECTOR3 almasPos[almasTotal];
 	bool almaDisponible[almasTotal];
 	MPrimitives* almaObjetos[almasTotal] = { nullptr };
 	std::vector<unsigned char> almaPixeles;
 	bool tecla1Last = false, tecla2Last = false, tecla3Last = false;
+
+	// Menu "Consume el poder de las almas": al acabar el minuto el jugador
+	// reparte las almas que junto entre los stats (1/2/3).
+	bool consumiendoAlmas = false;
+	int almasConsumidas = 0;
+	int almasBonus[3] = { 0, 0, 0 };	// % acumulado por stat en el menu
 
 	// Contador del minuto, arriba al centro
 	MPrimitives* hudAlmasContador = nullptr;
@@ -314,6 +319,14 @@ private:
 	int almasContadorAncho = 240;
 	int almasContadorAlto = 110;
 	int almasContadorFuente = 76;
+
+	// Menu de consumo: opciones en amarillo y almas restantes a la izquierda
+	MPrimitives* hudAlmasOpciones = nullptr;
+	std::vector<unsigned char> almasOpcionesPixeles;
+	std::wstring almasOpcionesDibujado;
+	MPrimitives* hudAlmasRestantes = nullptr;
+	std::vector<unsigned char> almasRestantesPixeles;
+	std::wstring almasRestantesDibujado;
 
 
 	float rotPerFrame;
@@ -825,16 +838,16 @@ public:
 		}
 		eLast = eDown;
 
-		// Fase de almas: 1/2/3 eligen a que stat va el alma recogida
-		if (faseAlmas && almasPendientes > 0 && !modoRuta && !modoCamara)
+		// Menu de consumo: 1/2/3 gastan un alma en ese stat
+		if (consumiendoAlmas && !modoRuta && !modoCamara)
 		{
 			bool k1 = (keyboardState[DIK_1] != 0);
 			bool k2 = (keyboardState[DIK_2] != 0);
 			bool k3 = (keyboardState[DIK_3] != 0);
 
-			if (k1 && !tecla1Last)			AsignarAlmaJugador(0);
-			else if (k2 && !tecla2Last)		AsignarAlmaJugador(1);
-			else if (k3 && !tecla3Last)		AsignarAlmaJugador(2);
+			if (k1 && !tecla1Last)			ConsumirAlma(0);
+			else if (k2 && !tecla2Last)		ConsumirAlma(1);
+			else if (k3 && !tecla3Last)		ConsumirAlma(2);
 
 			tecla1Last = k1;
 			tecla2Last = k2;
@@ -1343,18 +1356,26 @@ public:
 		}
 	}
 
-	// Sube un nivel el stat elegido por el jugador con un alma recogida
-	void AsignarAlmaJugador(int stat)
+	// Gasta un alma en el stat elegido. Cuando no quedan almas por consumir,
+	// arranca el dia siguiente (o la carrera si era el dia 2).
+	void ConsumirAlma(int stat)
 	{
-		if (almasPendientes <= 0)
+		if (!consumiendoAlmas || almasConsumidas >= almasRecogidas)
 			return;
 
 		if (stat == 0)			mejorasVelocidad++;
 		else if (stat == 1)		mejorasAceleracion++;
 		else					mejorasResistencia++;
 
+		almasBonus[stat] += 10;		// cada alma sube un 10% ese stat
+		almasConsumidas++;
 		RecalcularEstadisticas();
-		almasPendientes--;
+
+		if (almasConsumidas >= almasRecogidas)
+		{
+			consumiendoAlmas = false;
+			AvanzarDia();
+		}
 	}
 
 	// Las almas que el jugador no recogio se reparten entre las rivales:
@@ -1371,24 +1392,66 @@ public:
 		}
 	}
 
-	// Reparte las 5 almas a lo largo del circuito, un poco al costado de
-	// algunos checkpoints.
+	// Devuelve false si (x, z) cae dentro de un objeto con colisiones.
+	bool PosicionLibreAlma(float x, float z)
+	{
+		for (int i = 0; i < 9; i++)
+		{
+			float dx = x - colliders[i].x;
+			float dz = z - colliders[i].z;
+			float r = colliders[i].radius + 2.0f;
+
+			if (dx * dx + dz * dz < r * r)
+				return false;
+		}
+
+		for (int i = 0; i < 20; i++)
+		{
+			if (x > castleWalls[i].minX - 2.0f && x < castleWalls[i].maxX + 2.0f &&
+				z > castleWalls[i].minZ - 2.0f && z < castleWalls[i].maxZ + 2.0f)
+				return false;
+		}
+
+		return true;
+	}
+
+	// Reparte las 5 almas por cualquier parte del mapa, evitando los objetos
+	// con colisiones y sin que queden apiladas entre si.
 	void ColocarAlmas()
 	{
-		int total = (int)puntosRuta.size();
+		const float margen = 15.0f;			// el terreno mide 300 x 300
+		const float rango = 300.0f - 2.0f * margen;
 
 		for (int i = 0; i < almasTotal; i++)
 		{
 			almaDisponible[i] = true;
 
-			int indice = 1;
-			if (total > 1)
-				indice = 1 + (int)((total - 1) * (i + 0.5f) / almasTotal);
-			if (indice >= total)
-				indice = total - 1;
+			float x = 150.0f, z = 150.0f;
 
-			float x = puntosRuta[indice].x + 5.0f * cosf(i * 2.1f + 0.7f);
-			float z = puntosRuta[indice].y + 5.0f * sinf(i * 2.1f + 0.7f);
+			for (int intento = 0; intento < 400; intento++)
+			{
+				x = margen + (float)(rand() % (int)rango);
+				z = margen + (float)(rand() % (int)rango);
+
+				if (!PosicionLibreAlma(x, z))
+					continue;
+
+				bool cerca = false;
+				for (int j = 0; j < i; j++)
+				{
+					float dx = x - almasPos[j].x;
+					float dz = z - almasPos[j].z;
+
+					if (dx * dx + dz * dz < 40.0f * 40.0f)
+					{
+						cerca = true;
+						break;
+					}
+				}
+
+				if (!cerca)
+					break;
+			}
 
 			almasPos[i].x = x;
 			almasPos[i].z = z;
@@ -1402,7 +1465,9 @@ public:
 		faseAlmas = true;
 		almasTiempo = 60.0f;
 		almasRecogidas = 0;
-		almasPendientes = 0;
+		consumiendoAlmas = false;
+		almasConsumidas = 0;
+		almasBonus[0] = almasBonus[1] = almasBonus[2] = 0;
 
 		bannerTitulo = L"Busca las almas de poder";
 		bannerSub = L"Las almas de los ca\u00EDdos mejoran el poder de las calacas";
@@ -1412,13 +1477,10 @@ public:
 		hudTexto.clear();
 	}
 
-	// Se acabo el minuto: las almas que quedaron se reparten y pasa el dia.
+	// Se acabo el minuto: las que quedaron se reparten entre las rivales y, si
+	// el jugador junto alguna, aparece el menu para gastarlas.
 	void TerminarFaseAlmas()
 	{
-		// Si el jugador recogio un alma y no llego a elegir, se asigna al azar
-		while (almasPendientes > 0)
-			AsignarAlmaJugador(rand() % 3);
-
 		int perdidas = 0;
 		for (int i = 0; i < almasTotal; i++)
 			if (almaDisponible[i])
@@ -1430,19 +1492,24 @@ public:
 		almasTiempo = 0.0f;
 		hudTexto.clear();
 
-		AvanzarDia();
+		if (almasRecogidas > 0)
+		{
+			consumiendoAlmas = true;
+			almasConsumidas = 0;
+			almasBonus[0] = almasBonus[1] = almasBonus[2] = 0;
+		}
+		else
+		{
+			AvanzarDia();
+		}
 	}
 
-	// Contador y recogida de almas. El minuto empieza cuando se va el aviso.
+	// Contador y recogida de almas. El minuto empieza cuando se va el aviso y
+	// termina al agotarse el tiempo o al juntar las 5.
 	void ActualizarFaseAlmas()
 	{
 		if (bannerTiempo > 0.0f)
-		{
-			wchar_t buffer[96];
-			swprintf_s(buffer, L"Almas de poder: %d/%d", almasRecogidas, almasTotal);
-			hudTexto = buffer;
 			return;
-		}
 
 		almasTiempo -= deltaTime;
 
@@ -1458,22 +1525,17 @@ public:
 			{
 				almaDisponible[i] = false;
 				almasRecogidas++;
-				almasPendientes++;
 			}
 		}
 
-		if (almasTiempo <= 0.0f)
+		if (almasRecogidas >= almasTotal || almasTiempo <= 0.0f)
 		{
 			TerminarFaseAlmas();
 			return;
 		}
 
-		wchar_t buffer[160];
-		if (almasPendientes > 0)
-			swprintf_s(buffer, L"Almas de poder: %d/%d\nPulsa 1 Velocidad   2 Aceleraci\u00F3n   3 Resistencia",
-				almasRecogidas, almasTotal);
-		else
-			swprintf_s(buffer, L"Almas de poder: %d/%d", almasRecogidas, almasTotal);
+		wchar_t buffer[96];
+		swprintf_s(buffer, L"Almas de poder: %d/%d", almasRecogidas, almasTotal);
 		hudTexto = buffer;
 	}
 
@@ -1546,7 +1608,8 @@ public:
 
 		faseAlmas = false;
 		almasRecogidas = 0;
-		almasPendientes = 0;
+		consumiendoAlmas = false;
+		almasConsumidas = 0;
 
 		for (size_t i = 0; i < puntosEntrenamiento.size(); i++)
 			puntosEntrenamiento[i].usadoSlot = false;
@@ -1752,6 +1815,9 @@ public:
 		// Los dos primeros dias son de entrenamiento; la carrera es el tercero
 		if (diaActual < 3)
 		{
+			if (consumiendoAlmas)
+				return;			// el menu espera a que se gasten las almas
+
 			if (faseAlmas)
 			{
 				ActualizarFaseAlmas();
@@ -1975,6 +2041,84 @@ public:
 		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 	}
 
+	// Menu "Consume el poder de las almas": mismo panel y tipografia que el
+	// aviso del dia, con las opciones en amarillo y las almas restantes a la
+	// izquierda. Se queda en pantalla hasta gastar todas las almas.
+	void DibujarConsumoAlmas()
+	{
+		if (!consumiendoAlmas)
+			return;
+
+		const int anchoTitulo = 1600, altoTitulo = 170, fuenteTitulo = 96;
+		const int anchoOpciones = 700, altoOpciones = 170, fuenteOpciones = 40;
+		const int anchoRestantes = 560, altoRestantes = 170, fuenteRestantes = 40;
+		const float anchoFondo = 1500.0f;
+		const float altoFondo = 360.0f;
+		float xFondo = (hudScreenW - anchoFondo) * 0.5f;
+		float yFondo = hudScreenH * 0.10f;
+
+		bannerTitulo = L"Consume el poder de las almas";
+		if (bannerTitulo != bannerTituloDibujado)
+		{
+			GenerarTextoBGRA(bannerTitulo.c_str(), anchoTitulo, altoTitulo, fuenteTitulo,
+				255, 255, 255, bannerPixelesTitulo);
+			hudBannerTitulo->SetTextureFromPixels((UINT)anchoTitulo, (UINT)altoTitulo,
+				bannerPixelesTitulo.data());
+			bannerTituloDibujado = bannerTitulo;
+		}
+
+		static const wchar_t* nombres[3] = { L"Velocidad", L"Aceleraci\u00F3n", L"Resistencia" };
+
+		std::wstring opciones;
+		for (int i = 0; i < 3; i++)
+		{
+			wchar_t linea[80];
+			if (almasBonus[i] > 0)
+				swprintf_s(linea, L"(%d) %s + %d%%", i + 1, nombres[i], almasBonus[i]);
+			else
+				swprintf_s(linea, L"(%d) %s", i + 1, nombres[i]);
+
+			if (i > 0)
+				opciones += L"\n";
+			opciones += linea;
+		}
+
+		if (opciones != almasOpcionesDibujado)
+		{
+			GenerarTextoBGRA(opciones.c_str(), anchoOpciones, altoOpciones, fuenteOpciones,
+				255, 215, 60, almasOpcionesPixeles);
+			hudAlmasOpciones->SetTextureFromPixels((UINT)anchoOpciones, (UINT)altoOpciones,
+				almasOpcionesPixeles.data());
+			almasOpcionesDibujado = opciones;
+		}
+
+		wchar_t restantes[64];
+		swprintf_s(restantes, L"Almas por consumir: %d", almasRecogidas - almasConsumidas);
+
+		if (almasRestantesDibujado != restantes)
+		{
+			GenerarTextoBGRA(restantes, anchoRestantes, altoRestantes, fuenteRestantes,
+				255, 255, 255, almasRestantesPixeles);
+			hudAlmasRestantes->SetTextureFromPixels((UINT)anchoRestantes, (UINT)altoRestantes,
+				almasRestantesPixeles.data());
+			almasRestantesDibujado = restantes;
+		}
+
+		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+
+		hudBannerFondo->DrawHUD(xFondo, yFondo, anchoFondo, altoFondo, hudScreenW, hudScreenH);
+		hudBannerTitulo->DrawHUD((hudScreenW - anchoTitulo) * 0.5f, yFondo + 14.0f,
+			(float)anchoTitulo, (float)altoTitulo, hudScreenW, hudScreenH);
+		hudAlmasRestantes->DrawHUD(xFondo + 40.0f, yFondo + 190.0f,
+			(float)anchoRestantes, (float)altoRestantes, hudScreenW, hudScreenH);
+		hudAlmasOpciones->DrawHUD(xFondo + 660.0f, yFondo + 180.0f,
+			(float)anchoOpciones, (float)altoOpciones, hudScreenW, hudScreenH);
+
+		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+	}
+
 	void DibujarHUD()
 	{
 		if (!hudTexto.empty())
@@ -2025,6 +2169,7 @@ public:
 
 		DibujarContadorAlmas();
 		DibujarBanner();
+		DibujarConsumoAlmas();
 	}
 
 	// Aviso grande al empezar cada dia: titulo y subtitulo sobre un fondo
@@ -2214,7 +2359,7 @@ public:
 	// muestran los reales. Solo se regenera la textura cuando cambian los datos.
 	void DibujarTablaStats()
 	{
-		if (bannerTiempo > 0.0f)
+		if (bannerTiempo > 0.0f || consumiendoAlmas)
 			return;
 
 		std::wstring clave = std::to_wstring(diaActual);
@@ -2402,7 +2547,7 @@ public:
 			D3DXMATRIX escala, traslacion;
 			D3DXMatrixScaling(&escala, pulso, pulso, pulso);
 			D3DXMatrixTranslation(&traslacion, almasPos[i].x,
-				almasPos[i].y + 3.0f + flotar, almasPos[i].z);
+				almasPos[i].y + 1.75f + flotar, almasPos[i].z);
 
 			almaObjetos[i]->UpdateScene(escala * traslacion);
 			almaObjetos[i]->DrawScene(camara);
@@ -2562,11 +2707,13 @@ public:
 		// Almas de poder: billboards con la llama generada en CPU
 		for (int i = 0; i < almasTotal; i++)
 		{
-			almaObjetos[i] = new MPrimitives(d3d11Device, d3d11DevCon, 7.0f, 3.2f, L"", ShaderTexto);
+			almaObjetos[i] = new MPrimitives(d3d11Device, d3d11DevCon, 3.5f, 1.6f, L"", ShaderTexto);
 			GenerarAlmaBGRA(96, 256, i * 1.7f + 0.4f, almaPixeles);
 			almaObjetos[i]->SetTextureFromPixels(96, 256, almaPixeles.data());
 		}
 		hudAlmasContador = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudAlmasOpciones = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudAlmasRestantes = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 
 		// Diamante verde de la calaca del jugador y calacas rivales
 		diamanteJugador = new MPrimitives(d3d11Device, d3d11DevCon, L"", ShaderDiffuse);
