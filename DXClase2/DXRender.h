@@ -299,7 +299,7 @@ private:
 	bool faseAlmas = false;
 	float almasTiempo = 60.0f;
 	int almasRecogidas = 0;
-	float radioAlma = 7.5f;
+	float radioAlma = 12.0f;	// radio de recogida (el aviso "Pulsa E" usa el mismo)
 	D3DXVECTOR3 almasPos[almasTotal];
 	bool almaDisponible[almasTotal];
 	MPrimitives* almaObjetos[almasTotal] = { nullptr };
@@ -334,14 +334,15 @@ private:
 
 	// Edicion del circuito (F2/F3 y aros del circuito). Se puede apagar desde
 	// el menu de pausa para dejar solo el aro de inicio y los de resistencia.
-	bool edicionCircuito = true;
+	bool edicionCircuito = false;
 
-	// Menu de pausa (ESC). 0 = cerrado, 1 = principal, 2 = opciones.
+	// Menu de pausa (ESC). 0 = cerrado, 1 = principal, 2 = opciones, 3 = controles.
 	int menuEstado = 0;
 	MPrimitives* hudMenuFondo = nullptr;
 	MPrimitives* hudMenuTitulo = nullptr;
 	MPrimitives* hudMenuOpciones = nullptr;
-	MPrimitives* hudMenuOpcion[5] = { nullptr, nullptr, nullptr, nullptr, nullptr };
+	MPrimitives* hudMenuOpcion[6] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+	MPrimitives* hudMenuControles[4] = { nullptr, nullptr, nullptr, nullptr };
 	MPrimitives* hudMenuEtiqueta = nullptr;
 	MPrimitives* hudMenuPie = nullptr;
 	MPrimitives* hudMenuHover = nullptr;
@@ -351,14 +352,16 @@ private:
 	MPrimitives* hudSliderKnob = nullptr;
 	std::vector<unsigned char> menuTituloPixeles;
 	std::vector<unsigned char> menuOpcionesPixeles;
-	std::vector<unsigned char> menuOpcionPixeles[5];
+	std::vector<unsigned char> menuOpcionPixeles[6];
+	std::vector<unsigned char> menuControlesPixeles[4];
 	std::vector<unsigned char> menuEtiquetaPixeles;
 	std::vector<unsigned char> menuPiePixeles;
 	std::vector<unsigned char> cursorPixeles;
 	std::vector<unsigned char> sliderKnobPixeles;
 	std::wstring menuTituloDibujado;
 	std::wstring menuOpcionesDibujado;
-	std::wstring menuOpcionDibujado[5];
+	std::wstring menuOpcionDibujado[6];
+	std::wstring menuControlesDibujado[4];
 	std::wstring menuEtiquetaDibujado;
 	std::wstring menuPieDibujado;
 
@@ -366,10 +369,11 @@ private:
 	float menuMouseX = 960.0f, menuMouseY = 540.0f;
 	bool mouseBotonLast = false;
 	bool arrastrandoVolumen = false;
-	bool menuTeclasLast[5] = { false, false, false, false, false };
+	bool menuTeclasLast[6] = { false, false, false, false, false, false };
+	WORD padBotonesLast = 0;		// botones del control en el frame anterior
 
 	struct RenglonMenu { float x, y, w, h; };
-	RenglonMenu renglonesMenu[5];
+	RenglonMenu renglonesMenu[6];
 	RenglonMenu renglonVolver;
 	float menuPanelX = 0.0f, menuPanelY = 0.0f;
 	float menuPanelW = 1100.0f, menuPanelH = 780.0f;
@@ -554,25 +558,25 @@ public:
 	void CalcularRenglonesMenu()
 	{
 		menuPanelW = 1100.0f;
-		menuPanelH = 780.0f;
+		menuPanelH = 880.0f;
 		menuPanelX = (hudScreenW - menuPanelW) * 0.5f;
 		menuPanelY = (hudScreenH - menuPanelH) * 0.5f;
 
 		const float opX = menuPanelX + 130.0f;
-		const float opY = menuPanelY + 200.0f;
+		const float opY = menuPanelY + 190.0f;
 		const float opW = 840.0f;
-		const float opH = 84.0f;
+		const float opH = 80.0f;
 
-		for (int i = 0; i < 5; i++)
+		for (int i = 0; i < 6; i++)
 		{
 			renglonesMenu[i].x = opX;
-			renglonesMenu[i].y = opY + i * 96.0f;
+			renglonesMenu[i].y = opY + i * 92.0f;
 			renglonesMenu[i].w = opW;
 			renglonesMenu[i].h = opH;
 		}
 
 		renglonVolver.x = opX;
-		renglonVolver.y = menuPanelY + 560.0f;
+		renglonVolver.y = menuPanelY + 700.0f;
 		renglonVolver.w = opW;
 		renglonVolver.h = opH;
 
@@ -644,10 +648,13 @@ public:
 		else if (opcion == 3)
 			menuEstado = 2;					// Opciones
 		else if (opcion == 4)
+			menuEstado = 3;					// Controles
+		else if (opcion == 5)
 			PostQuitMessage(0);				// Salir del juego
 	}
 
-	// Abre/cierra el menu de pausa (ESC). Si esta en Opciones, vuelve al principal.
+	// Abre/cierra el menu de pausa (ESC o Start). Desde Opciones o Controles
+	// vuelve al menu principal.
 	void AlternarMenuPausa()
 	{
 		if (menuEstado == 0)
@@ -658,7 +665,7 @@ public:
 			menuMouseY = hudScreenH * 0.5f;
 			mouseBotonLast = true;		// evita un clic fantasma al abrir
 		}
-		else if (menuEstado == 2)
+		else if (menuEstado == 2 || menuEstado == 3)
 		{
 			menuEstado = 1;
 		}
@@ -668,8 +675,8 @@ public:
 		}
 	}
 
-	// Mouse (cursor virtual) y teclas 1-5 dentro del menu.
-	void ActualizarMenu(const BYTE* teclas, const DIMOUSESTATE& mouse)
+	// Mouse (cursor virtual), teclas 1-6 y control dentro del menu.
+	void ActualizarMenu(const BYTE* teclas, const DIMOUSESTATE& mouse, WORD padBotones)
 	{
 		CalcularRenglonesMenu();
 
@@ -683,24 +690,52 @@ public:
 		bool clic = (mouse.rgbButtons[0] & 0x80) != 0;
 		bool clicNuevo = clic && !mouseBotonLast;
 
-		bool nuevo[5];
-		for (int i = 0; i < 5; i++)
+		bool nuevo[6];
+		for (int i = 0; i < 6; i++)
 		{
 			bool abajo = (teclas[DIK_1 + i] != 0);
 			nuevo[i] = abajo && !menuTeclasLast[i];
 			menuTeclasLast[i] = abajo;
 		}
 
+		// Control: D-pad mueve el cursor, A confirma, B y Start vuelven
+		bool padA = (padBotones & XINPUT_GAMEPAD_A) && !(padBotonesLast & XINPUT_GAMEPAD_A);
+		bool padB = (padBotones & XINPUT_GAMEPAD_B) && !(padBotonesLast & XINPUT_GAMEPAD_B);
+		bool padStart = (padBotones & XINPUT_GAMEPAD_START) && !(padBotonesLast & XINPUT_GAMEPAD_START);
+		bool padUp = (padBotones & XINPUT_GAMEPAD_DPAD_UP) && !(padBotonesLast & XINPUT_GAMEPAD_DPAD_UP);
+		bool padDown = (padBotones & XINPUT_GAMEPAD_DPAD_DOWN) && !(padBotonesLast & XINPUT_GAMEPAD_DPAD_DOWN);
+
 		if (menuEstado == 1)
 		{
-			for (int i = 0; i < 5; i++)
+			// El D-pad salta el cursor de renglon en renglon
+			if (padUp || padDown)
+			{
+				int actual = -1;
+				for (int i = 0; i < 6; i++)
+				{
+					if (menuMouseY >= renglonesMenu[i].y &&
+						menuMouseY <= renglonesMenu[i].y + renglonesMenu[i].h)
+						actual = i;
+				}
+
+				int destino;
+				if (padUp)
+					destino = (actual <= 0) ? 5 : actual - 1;
+				else
+					destino = (actual < 0 || actual >= 5) ? 0 : actual + 1;
+
+				menuMouseX = renglonesMenu[destino].x + renglonesMenu[destino].w * 0.5f;
+				menuMouseY = renglonesMenu[destino].y + renglonesMenu[destino].h * 0.5f;
+			}
+
+			for (int i = 0; i < 6; i++)
 			{
 				bool hover = menuMouseX >= renglonesMenu[i].x &&
 					menuMouseX <= renglonesMenu[i].x + renglonesMenu[i].w &&
 					menuMouseY >= renglonesMenu[i].y &&
 					menuMouseY <= renglonesMenu[i].y + renglonesMenu[i].h;
 
-				if (nuevo[i] || (clicNuevo && hover))
+				if (nuevo[i] || (clicNuevo && hover) || (padA && hover))
 				{
 					EjecutarOpcionMenu(i);
 					break;
@@ -725,9 +760,9 @@ public:
 				AplicarVolumen(f);
 			}
 
-			if (teclas[DIK_LEFT])
+			if (teclas[DIK_LEFT] || (padBotones & XINPUT_GAMEPAD_DPAD_LEFT))
 				AplicarVolumen(audioVolume - deltaTime * 0.6f);
-			if (teclas[DIK_RIGHT])
+			if (teclas[DIK_RIGHT] || (padBotones & XINPUT_GAMEPAD_DPAD_RIGHT))
 				AplicarVolumen(audioVolume + deltaTime * 0.6f);
 
 			bool hoverVolver = menuMouseX >= renglonVolver.x &&
@@ -735,11 +770,48 @@ public:
 				menuMouseY >= renglonVolver.y &&
 				menuMouseY <= renglonVolver.y + renglonVolver.h;
 
-			if (nuevo[0] || (clicNuevo && hoverVolver))
+			// D-pad arriba/abajo salta entre la barra y "(1) Volver"
+			if (padUp || padDown)
+			{
+				if (padUp && hoverVolver)
+				{
+					menuMouseX = sliderX + sliderW * 0.5f;
+					menuMouseY = sliderY + sliderH * 0.5f;
+				}
+				else if (padDown && !hoverVolver)
+				{
+					menuMouseX = renglonVolver.x + renglonVolver.w * 0.5f;
+					menuMouseY = renglonVolver.y + renglonVolver.h * 0.5f;
+					hoverVolver = true;
+				}
+			}
+
+			if (nuevo[0] || padB || (clicNuevo && hoverVolver) || (padA && hoverVolver))
+				menuEstado = 1;
+		}
+		else if (menuEstado == 3)
+		{
+			bool hoverVolver = menuMouseX >= renglonVolver.x &&
+				menuMouseX <= renglonVolver.x + renglonVolver.w &&
+				menuMouseY >= renglonVolver.y &&
+				menuMouseY <= renglonVolver.y + renglonVolver.h;
+
+			if (padUp || padDown)
+			{
+				menuMouseX = renglonVolver.x + renglonVolver.w * 0.5f;
+				menuMouseY = renglonVolver.y + renglonVolver.h * 0.5f;
+				hoverVolver = true;
+			}
+
+			if (nuevo[0] || padB || (clicNuevo && hoverVolver) || (padA && hoverVolver))
 				menuEstado = 1;
 		}
 
+		if (padStart)
+			menuEstado = 0;
+
 		mouseBotonLast = clic;
+		padBotonesLast = padBotones;
 	}
 
 	void DetectInput()
@@ -769,10 +841,38 @@ public:
 			ZeroMemory(keyboardState, sizeof(keyboardState));
 		}
 
+		// Control de Xbox (XInput): se lee una vez por frame
+		XINPUT_STATE padState;
+		ZeroMemory(&padState, sizeof(XINPUT_STATE));
+		bool padConectado = (XInputGetState(0, &padState) == ERROR_SUCCESS);
+
+		XINPUT_GAMEPAD pad;
+		ZeroMemory(&pad, sizeof(pad));
+		if (padConectado)
+			pad = padState.Gamepad;
+
+		WORD padBotones = padConectado ? pad.wButtons : 0;
+		bool padA = (padBotones & XINPUT_GAMEPAD_A) && !(padBotonesLast & XINPUT_GAMEPAD_A);
+		bool padB = (padBotones & XINPUT_GAMEPAD_B) && !(padBotonesLast & XINPUT_GAMEPAD_B);
+		bool padX = (padBotones & XINPUT_GAMEPAD_X) && !(padBotonesLast & XINPUT_GAMEPAD_X);
+		bool padY = (padBotones & XINPUT_GAMEPAD_Y) && !(padBotonesLast & XINPUT_GAMEPAD_Y);
+		bool padLB = (padBotones & XINPUT_GAMEPAD_LEFT_SHOULDER) && !(padBotonesLast & XINPUT_GAMEPAD_LEFT_SHOULDER);
+		bool padRB = (padBotones & XINPUT_GAMEPAD_RIGHT_SHOULDER) && !(padBotonesLast & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+		bool padBack = (padBotones & XINPUT_GAMEPAD_BACK) && !(padBotonesLast & XINPUT_GAMEPAD_BACK);
+		bool padStart = (padBotones & XINPUT_GAMEPAD_START) && !(padBotonesLast & XINPUT_GAMEPAD_START);
+
 		// Menu de pausa: el mouse mueve un cursor virtual y el juego queda quieto
 		if (menuEstado != 0)
 		{
-			ActualizarMenu(keyboardState, mouseCurrState);
+			ActualizarMenu(keyboardState, mouseCurrState, padBotones);
+			return;
+		}
+
+		// Start abre el menu de pausa, igual que ESC
+		if (padStart)
+		{
+			AlternarMenuPausa();
+			padBotonesLast = padBotones;
 			return;
 		}
 
@@ -785,14 +885,15 @@ public:
 		float camPitch = 0;
 
 		
-		if (keyboardState[DIK_LSHIFT] || keyboardState[DIK_RSHIFT]){
+		if (keyboardState[DIK_LSHIFT] || keyboardState[DIK_RSHIFT] ||
+			pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD){
 			speed *= 2.0f;
 		}
 
 		showColliders = (keyboardState[DIK_C] != 0);
 
-		// Tab oculta o muestra la tabla de estadisticas de las rivales
-		bool tabDown = (keyboardState[DIK_TAB] != 0);
+		// Tab (o Back en el control) oculta o muestra la tabla de stats
+		bool tabDown = (keyboardState[DIK_TAB] != 0) || padBack;
 		if (tabDown && !tabLast)
 			mostrarTablaStats = !mostrarTablaStats;
 		tabLast = tabDown;
@@ -824,14 +925,9 @@ public:
 			mouseLastState = mouseCurrState;
 		}
 
-		//Control de Xbox (XInput)
-		XINPUT_STATE padState;
-		ZeroMemory(&padState, sizeof(XINPUT_STATE));
-		if (XInputGetState(0, &padState) == ERROR_SUCCESS)
+		// Control de Xbox: sticks para mover y girar la camara
+		if (padConectado)
 		{
-			XINPUT_GAMEPAD pad = padState.Gamepad;
-
-			
 			float normLX = 0.0f;
 			float normLY = 0.0f;
 			if (pad.sThumbLX > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || pad.sThumbLX < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
@@ -839,23 +935,18 @@ public:
 			if (pad.sThumbLY > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || pad.sThumbLY < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE)
 				normLY = (float)pad.sThumbLY / 32767.0f;
 
-			float padSpeed = (pad.bRightTrigger > XINPUT_GAMEPAD_TRIGGER_THRESHOLD) ? speed * 1.5f : speed;
-			moveLeftRight += normLX * padSpeed;
-			moveBackForward += normLY * padSpeed;
+			moveLeftRight += normLX * speed;
+			moveBackForward += normLY * speed;
 
-			
 			if (pad.sThumbRX > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || pad.sThumbRX < -XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
 				camYaw += (float)pad.sThumbRX / 32767.0f * 0.008f;
 			if (pad.sThumbRY > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || pad.sThumbRY < -XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE)
 				camPitch -= (float)pad.sThumbRY / 32767.0f * 0.008f;
-
-
-			if (pad.wButtons & XINPUT_GAMEPAD_START)
-				PostQuitMessage(0);
 		}
 
-		// Modo de captura de ruta: F2 lo activa, P agrega el punto actual, Retroceso borra el ultimo
-		bool f2Down = (keyboardState[DIK_F2] != 0);
+		// Modo de captura de ruta: F2 (o LB) lo activa, P (o A) agrega el punto
+		// actual, Retroceso (o B) borra el ultimo
+		bool f2Down = (keyboardState[DIK_F2] != 0) || padLB;
 		if (f2Down && !f2Last && !modoCamara && edicionCircuito)
 		{
 			modoRuta = !modoRuta;
@@ -864,9 +955,10 @@ public:
 		}
 		f2Last = f2Down;
 
-		// Modo editor de vistas de camara: F3 lo activa (vuelo libre), P guarda la
-		// vista actual como la del siguiente tramo y Retroceso borra la ultima.
-		bool f3Down = (keyboardState[DIK_F3] != 0);
+		// Modo editor de vistas de camara: F3 (o RB) lo activa (vuelo libre), P (o A)
+		// guarda la vista actual como la del siguiente tramo y Retroceso (o B) borra
+		// la ultima.
+		bool f3Down = (keyboardState[DIK_F3] != 0) || padRB;
 		if (f3Down && !f3Last && !modoRuta && edicionCircuito)
 		{
 			if (modoCamara)
@@ -881,7 +973,7 @@ public:
 
 		if (modoCamara)
 		{
-			bool pDown = (keyboardState[DIK_P] != 0);
+			bool pDown = (keyboardState[DIK_P] != 0) || padA;
 			if (pDown && !pLast)
 			{
 				VistaCamara vista;
@@ -893,7 +985,7 @@ public:
 			}
 			pLast = pDown;
 
-			bool backDown = (keyboardState[DIK_BACK] != 0);
+			bool backDown = (keyboardState[DIK_BACK] != 0) || padB;
 			if (backDown && !backLast && !vistasCamara.empty())
 			{
 				vistasCamara.pop_back();
@@ -911,7 +1003,7 @@ public:
 
 		if (modoRuta)
 		{
-			bool pDown = (keyboardState[DIK_P] != 0);
+			bool pDown = (keyboardState[DIK_P] != 0) || padA;
 			if (pDown && !pLast)
 			{
 				puntosRuta.push_back(D3DXVECTOR2(playerPos.x, playerPos.z));
@@ -919,7 +1011,7 @@ public:
 			}
 			pLast = pDown;
 
-			bool backDown = (keyboardState[DIK_BACK] != 0);
+			bool backDown = (keyboardState[DIK_BACK] != 0) || padB;
 			if (backDown && !backLast && !puntosRuta.empty())
 			{
 				puntosRuta.pop_back();
@@ -927,8 +1019,8 @@ public:
 			}
 			backLast = backDown;
 
-			// R agrega un aro de resistencia en la posicion actual
-			bool rDown = (keyboardState[DIK_R] != 0);
+			// R (o X) agrega un aro de resistencia en la posicion actual
+			bool rDown = (keyboardState[DIK_R] != 0) || padX;
 			if (rDown && !rLast)
 			{
 				arosResistencia.push_back(D3DXVECTOR2(playerPos.x, playerPos.z));
@@ -937,8 +1029,8 @@ public:
 			}
 			rLast = rDown;
 
-			// Supr borra el ultimo aro
-			bool delDown = (keyboardState[DIK_DELETE] != 0);
+			// Supr (o Y) borra el ultimo aro
+			bool delDown = (keyboardState[DIK_DELETE] != 0) || padY;
 			if (delDown && !delLast && !arosResistencia.empty())
 			{
 				arosResistencia.pop_back();
@@ -948,8 +1040,9 @@ public:
 			}
 			delLast = delDown;
 
-			// 1/2/3 agregan un punto de entrenamiento del tipo correspondiente
-			bool k1Down = (keyboardState[DIK_1] != 0);
+			// 1/2/3 (o D-pad arriba/izquierda/derecha) agregan un punto de
+			// entrenamiento del tipo correspondiente
+			bool k1Down = (keyboardState[DIK_1] != 0) || (padBotones & XINPUT_GAMEPAD_DPAD_UP);
 			if (k1Down && !k1Last)
 			{
 				PuntoEntrenamiento punto;
@@ -961,7 +1054,7 @@ public:
 			}
 			k1Last = k1Down;
 
-			bool k2Down = (keyboardState[DIK_2] != 0);
+			bool k2Down = (keyboardState[DIK_2] != 0) || (padBotones & XINPUT_GAMEPAD_DPAD_LEFT);
 			if (k2Down && !k2Last)
 			{
 				PuntoEntrenamiento punto;
@@ -973,7 +1066,7 @@ public:
 			}
 			k2Last = k2Down;
 
-			bool k3Down = (keyboardState[DIK_3] != 0);
+			bool k3Down = (keyboardState[DIK_3] != 0) || (padBotones & XINPUT_GAMEPAD_DPAD_RIGHT);
 			if (k3Down && !k3Last)
 			{
 				PuntoEntrenamiento punto;
@@ -985,8 +1078,8 @@ public:
 			}
 			k3Last = k3Down;
 
-			// 4 borra el ultimo punto de entrenamiento
-			bool k4Down = (keyboardState[DIK_4] != 0);
+			// 4 (o D-pad abajo) borra el ultimo punto de entrenamiento
+			bool k4Down = (keyboardState[DIK_4] != 0) || (padBotones & XINPUT_GAMEPAD_DPAD_DOWN);
 			if (k4Down && !k4Last && !puntosEntrenamiento.empty())
 			{
 				puntosEntrenamiento.pop_back();
@@ -1008,10 +1101,12 @@ public:
 		// Una tecla equivocada cancela el QTE; si se acaba el tiempo, tambien.
 		{
 			const int teclasQte[4] = { DIK_UP, DIK_RIGHT, DIK_DOWN, DIK_LEFT };
+			const WORD botonesQte[4] = { XINPUT_GAMEPAD_DPAD_UP, XINPUT_GAMEPAD_DPAD_RIGHT,
+				XINPUT_GAMEPAD_DPAD_DOWN, XINPUT_GAMEPAD_DPAD_LEFT };
 
 			for (int i = 0; i < 4; i++)
 			{
-				bool down = (keyboardState[teclasQte[i]] != 0);
+				bool down = (keyboardState[teclasQte[i]] != 0) || (padBotones & botonesQte[i]);
 
 				if (qteActivo && down && !qteLast[i])
 				{
@@ -1047,8 +1142,8 @@ public:
 			}
 		}
 
-		// Espacio: activa la ulti cuando la carga esta completa
-		bool spaceDown = (keyboardState[DIK_SPACE] != 0);
+		// Espacio (o X): activa la ulti cuando la carga esta completa
+		bool spaceDown = (keyboardState[DIK_SPACE] != 0) || padX;
 		if (spaceDown && !spaceUltiLast && !modoRuta && !modoCamara &&
 			estadoCarrera == CarreraCorriendo && cargaUlti >= 1.0f && ultiTiempo <= 0.0f)
 		{
@@ -1057,11 +1152,11 @@ public:
 		}
 		spaceUltiLast = spaceDown;
 
-		// E: durante los dias de entrenamiento entrena en el punto cercano;
+		// E (o A): durante los dias de entrenamiento entrena en el punto cercano;
 		// en la fase de las almas recoge la que este a tiro; el dia de la
 		// carrera la usa para arrancar junto a la meta.
-		bool eDown = (keyboardState[DIK_E] != 0);
-		if (eDown && !eLast && !modoRuta && !modoCamara)
+		bool eDown = (keyboardState[DIK_E] != 0) || padA;
+		if (eDown && !eLast && !modoRuta && !modoCamara && !consumiendoAlmas)
 		{
 			if (faseAlmas)
 			{
@@ -1095,12 +1190,12 @@ public:
 		}
 		eLast = eDown;
 
-		// Menu de consumo: 1/2/3 gastan un alma en ese stat
+		// Menu de consumo: 1/2/3 (o A/X/Y) gastan un alma en ese stat
 		if (consumiendoAlmas && !modoRuta && !modoCamara)
 		{
-			bool k1 = (keyboardState[DIK_1] != 0);
-			bool k2 = (keyboardState[DIK_2] != 0);
-			bool k3 = (keyboardState[DIK_3] != 0);
+			bool k1 = (keyboardState[DIK_1] != 0) || padA;
+			bool k2 = (keyboardState[DIK_2] != 0) || padX;
+			bool k3 = (keyboardState[DIK_3] != 0) || padY;
 
 			if (k1 && !tecla1Last)			ConsumirAlma(0);
 			else if (k2 && !tecla2Last)		ConsumirAlma(1);
@@ -1115,8 +1210,8 @@ public:
 			tecla1Last = tecla2Last = tecla3Last = false;
 		}
 
-		bool vDown = (keyboardState[DIK_V] != 0);
-		if (vDown && !vKeyLast && !modoCamara) thirdPerson = !thirdPerson;
+		bool vDown = (keyboardState[DIK_V] != 0) || padY;
+		if (vDown && !vKeyLast && !modoCamara && !consumiendoAlmas) thirdPerson = !thirdPerson;
 		vKeyLast = vDown;
 
 		// Durante la cuenta y la carrera automatica el jugador no controla a la calaca
@@ -1153,8 +1248,9 @@ public:
 			camara->UpdateCamera(moveBackForward, moveLeftRight, camYaw, camPitch);
 
 			float vertical = 0.0f;
-			if (keyboardState[DIK_SPACE]) vertical += speed;
-			if (keyboardState[DIK_LCONTROL] || keyboardState[DIK_RCONTROL]) vertical -= speed;
+			if (keyboardState[DIK_SPACE] || (padBotones & XINPUT_GAMEPAD_DPAD_UP)) vertical += speed;
+			if (keyboardState[DIK_LCONTROL] || keyboardState[DIK_RCONTROL] ||
+				(padBotones & XINPUT_GAMEPAD_DPAD_DOWN)) vertical -= speed;
 
 			if (vertical != 0.0f)
 			{
@@ -1182,6 +1278,8 @@ public:
 		skyCamara->setSkyCamara(camara);
 
 		ActualizarCarrera();
+
+		padBotonesLast = padBotones;
 	}
 
 	void ReleaseObjects()
@@ -2420,14 +2518,16 @@ public:
 	}
 
 	// Menu de pausa: fondo, titulo y opciones con la paleta del aviso del dia.
-	// El submenu de opciones muestra la barra de volumen con su cursor.
+	// 1 = principal, 2 = opciones (volumen), 3 = controles.
 	void DibujarMenu()
 	{
 		CalcularRenglonesMenu();
 		bool esOpciones = (menuEstado == 2);
+		bool esControles = (menuEstado == 3);
 
 		// Titulo
-		const wchar_t* titulo = esOpciones ? L"Opciones" : L"Men\u00FA";
+		const wchar_t* titulo = esOpciones ? L"Opciones"
+			: (esControles ? L"Controles" : L"Men\u00FA");
 		if (menuTituloDibujado != titulo)
 		{
 			GenerarTextoBGRA(titulo, 900, 120, 72, 255, 255, 255, menuTituloPixeles);
@@ -2435,31 +2535,32 @@ public:
 			menuTituloDibujado = titulo;
 		}
 
-		if (!esOpciones)
+		if (menuEstado == 1)
 		{
 			// Una textura por renglon: asi el texto queda centrado en su fila y el
 			// resaltado del raton no se desfasa de la opcion.
-			std::wstring opciones[5] = {
+			std::wstring opciones[6] = {
 				L"(1) Continuar",
 				L"(2) Reiniciar partida",
 				L"(3) Edici\u00F3n de circuito (F2/F3): ",
 				L"(4) Opciones",
-				L"(5) Salir del juego"
+				L"(5) Controles",
+				L"(6) Salir del juego"
 			};
 			opciones[2] += edicionCircuito ? L"S\u00ED" : L"No";
 
-			for (int i = 0; i < 5; i++)
+			for (int i = 0; i < 6; i++)
 			{
 				if (menuOpcionDibujado[i] != opciones[i])
 				{
-					GenerarTextoBGRA(opciones[i].c_str(), 840, 84, 44, 255, 215, 60,
+					GenerarTextoBGRA(opciones[i].c_str(), 840, 80, 42, 255, 215, 60,
 						menuOpcionPixeles[i], true);
-					hudMenuOpcion[i]->SetTextureFromPixels(840, 84, menuOpcionPixeles[i].data());
+					hudMenuOpcion[i]->SetTextureFromPixels(840, 80, menuOpcionPixeles[i].data());
 					menuOpcionDibujado[i] = opciones[i];
 				}
 			}
 		}
-		else
+		else if (esOpciones)
 		{
 			wchar_t etiqueta[64];
 			swprintf_s(etiqueta, L"Volumen: %d%%", (int)(audioVolume * 100.0f + 0.5f));
@@ -2470,24 +2571,79 @@ public:
 				hudMenuOpciones->SetTextureFromPixels(500, 60, menuOpcionesPixeles.data());
 				menuOpcionesDibujado = etiqueta;
 			}
+		}
+		else
+		{
+			// Dos columnas: teclado + raton y control de Xbox
+			const wchar_t* cabeceras[2] = {
+				L"TECLADO Y RAT\u00D3N",
+				L"CONTROL XBOX"
+			};
+			const wchar_t* cuerpos[2] = {
+				L"WASD: mover\n"
+				L"Rat\u00F3n: girar c\u00E1mara\n"
+				L"Shift: correr      Espacio: ultimate\n"
+				L"E: entrenar / alma / arrancar\n"
+				L"V: cambiar c\u00E1mara      1 2 3: gastar almas\n"
+				L"Tab: tabla de stats      C: colliders\n"
+				L"F2: editar ruta      F3: editar c\u00E1maras\n"
+				L"P: agregar punto      Retroceso: borrar\n"
+				L"R / Supr: aro de resistencia\n"
+				L"ESC: men\u00FA de pausa",
+				L"Stick izq.: mover\n"
+				L"Stick der.: girar c\u00E1mara\n"
+				L"RT: correr\n"
+				L"A: entrenar / alma / arrancar\n"
+				L"X: ultimate\n"
+				L"Y: cambiar c\u00E1mara\n"
+				L"Back: tabla de stats\n"
+				L"A X Y: gastar almas\n"
+				L"D-pad: flechas del QTE\n"
+				L"LB: editar ruta      RB: editar c\u00E1maras\n"
+				L"Start: men\u00FA de pausa\n"
+				L"B: volver en los men\u00FAs"
+			};
 
-			if (menuEtiquetaDibujado != L"(1) Volver")
+			for (int c = 0; c < 2; c++)
 			{
-				GenerarTextoBGRA(L"(1) Volver", 400, 84, 44, 255, 215, 60,
-					menuEtiquetaPixeles, true);
-				hudMenuEtiqueta->SetTextureFromPixels(400, 84, menuEtiquetaPixeles.data());
-				menuEtiquetaDibujado = L"(1) Volver";
+				if (menuControlesDibujado[c * 2] != cabeceras[c])
+				{
+					GenerarTextoBGRA(cabeceras[c], 480, 56, 30, 230, 220, 190,
+						menuControlesPixeles[c * 2], true);
+					hudMenuControles[c * 2]->SetTextureFromPixels(480, 56,
+						menuControlesPixeles[c * 2].data());
+					menuControlesDibujado[c * 2] = cabeceras[c];
+				}
+
+				if (menuControlesDibujado[c * 2 + 1] != cuerpos[c])
+				{
+					GenerarTextoBGRA(cuerpos[c], 480, 420, 22, 255, 255, 255,
+						menuControlesPixeles[c * 2 + 1], true);
+					hudMenuControles[c * 2 + 1]->SetTextureFromPixels(480, 420,
+						menuControlesPixeles[c * 2 + 1].data());
+					menuControlesDibujado[c * 2 + 1] = cuerpos[c];
+				}
 			}
 		}
 
 		const wchar_t* pie = esOpciones
 			? L"Arrastra la barra o usa las flechas      ESC para volver"
-			: L"Clic o teclas 1-5      ESC para continuar";
+			: (esControles
+				? L"ESC o B para volver"
+				: L"Clic, teclas 1-6 o D-pad      ESC para continuar");
 		if (menuPieDibujado != pie)
 		{
 			GenerarTextoBGRA(pie, 900, 50, 26, 230, 220, 190, menuPiePixeles);
 			hudMenuPie->SetTextureFromPixels(900, 50, menuPiePixeles.data());
 			menuPieDibujado = pie;
+		}
+
+		if ((esOpciones || esControles) && menuEtiquetaDibujado != L"(1) Volver")
+		{
+			GenerarTextoBGRA(L"(1) Volver", 400, 80, 42, 255, 215, 60,
+				menuEtiquetaPixeles, true);
+			hudMenuEtiqueta->SetTextureFromPixels(400, 80, menuEtiquetaPixeles.data());
+			menuEtiquetaDibujado = L"(1) Volver";
 		}
 
 		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
@@ -2499,9 +2655,9 @@ public:
 		hudMenuTitulo->DrawHUD(menuPanelX + (menuPanelW - 900.0f) * 0.5f,
 			menuPanelY + 30.0f, 900.0f, 120.0f, hudScreenW, hudScreenH);
 
-		if (!esOpciones)
+		if (menuEstado == 1)
 		{
-			for (int i = 0; i < 5; i++)
+			for (int i = 0; i < 6; i++)
 			{
 				bool hover = menuMouseX >= renglonesMenu[i].x &&
 					menuMouseX <= renglonesMenu[i].x + renglonesMenu[i].w &&
@@ -2517,7 +2673,7 @@ public:
 					renglonesMenu[i].w, renglonesMenu[i].h, hudScreenW, hudScreenH);
 			}
 		}
-		else
+		else if (esOpciones)
 		{
 			hudMenuOpciones->DrawHUD(menuPanelX + 130.0f, menuPanelY + 200.0f,
 				500.0f, 60.0f, hudScreenW, hudScreenH);
@@ -2541,7 +2697,30 @@ public:
 					hudScreenW, hudScreenH);
 
 			hudMenuEtiqueta->DrawHUD(renglonVolver.x, renglonVolver.y,
-				400.0f, 84.0f, hudScreenW, hudScreenH);
+				400.0f, 80.0f, hudScreenW, hudScreenH);
+		}
+		else
+		{
+			const float colX[2] = { menuPanelX + 70.0f, menuPanelX + 570.0f };
+			for (int c = 0; c < 2; c++)
+			{
+				hudMenuControles[c * 2]->DrawHUD(colX[c], menuPanelY + 150.0f,
+					480.0f, 56.0f, hudScreenW, hudScreenH);
+				hudMenuControles[c * 2 + 1]->DrawHUD(colX[c], menuPanelY + 212.0f,
+					480.0f, 420.0f, hudScreenW, hudScreenH);
+			}
+
+			bool hoverVolver = menuMouseX >= renglonVolver.x &&
+				menuMouseX <= renglonVolver.x + renglonVolver.w &&
+				menuMouseY >= renglonVolver.y &&
+				menuMouseY <= renglonVolver.y + renglonVolver.h;
+			if (hoverVolver)
+				hudMenuHover->DrawHUD(renglonVolver.x - 20.0f, renglonVolver.y - 4.0f,
+					renglonVolver.w + 40.0f, renglonVolver.h + 8.0f,
+					hudScreenW, hudScreenH);
+
+			hudMenuEtiqueta->DrawHUD(renglonVolver.x, renglonVolver.y,
+				400.0f, 80.0f, hudScreenW, hudScreenH);
 		}
 
 		hudMenuPie->DrawHUD(menuPanelX + (menuPanelW - 900.0f) * 0.5f,
@@ -2950,7 +3129,11 @@ public:
 			anillo->DrawScene(camara);
 		}
 
-		// Aros de resistencia: magenta si estan disponibles, gris si ya se usaron
+		// Aros de resistencia: magenta si estan disponibles, gris si ya se usaron.
+		// Con la edicion apagada solo se ven mientras se corre la carrera.
+		if (!edicionCircuito && estadoCarrera != CarreraCorriendo)
+			return;
+
 		for (size_t i = 0; i < arosResistencia.size(); i++)
 		{
 			bool usado = (i < arosUsados.size() && arosUsados[i]);
@@ -3165,8 +3348,10 @@ public:
 		hudMenuFondo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudMenuTitulo = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudMenuOpciones = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
-		for (int i = 0; i < 5; i++)
+		for (int i = 0; i < 6; i++)
 			hudMenuOpcion[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		for (int i = 0; i < 4; i++)
+			hudMenuControles[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudMenuEtiqueta = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudMenuPie = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudMenuHover = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
