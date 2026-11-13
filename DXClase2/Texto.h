@@ -279,8 +279,8 @@ inline void GenerarPanelBGRA(int ancho, int alto,
 }
 
 // Tabla de estadisticas de las calacas rivales: 5 filas (cabecera + 4 calacas)
-// y 4 columnas (nombre, velocidad, aceleracion, resistencia). Las celdas son
-// opacas, con los colores de la tabla y el texto en negro.
+// y 4 columnas (nombre, velocidad, aceleracion, resistencia). Usa la misma
+// paleta oscura del aviso del dia, con el fondo semitransparente.
 inline void GenerarTablaBGRA(int ancho, int alto,
 	const wchar_t* celdas[5][4], std::vector<unsigned char>& bgra)
 {
@@ -304,43 +304,54 @@ inline void GenerarTablaBGRA(int ancho, int alto,
 	HGDIOBJ oldBmp = SelectObject(dc, dib);
 	PatBlt(dc, 0, 0, ancho, alto, BLACKNESS);
 
-	// Limites de las columnas y de las filas
-	const int columnas[5] = { 0, 300, 430, 580, ancho };
-	const int filas[6] = { 0, 56, 108, 160, 212, alto };
-
-	// Cabecera con colores vivos y cuerpo con los mismos colores aclarados
-	const COLORREF cabecera[4] = {
-		RGB(232, 160, 216), RGB(160, 216, 240), RGB(255, 200, 100), RGB(170, 230, 160)
+	// Limites de las columnas y de las filas, proporcionales al tamano de la
+	// tabla para que se pueda escalar sin tocar estos valores.
+	const int columnas[5] = {
+		0, ancho * 300 / 730, ancho * 430 / 730, ancho * 580 / 730, ancho
 	};
-	const COLORREF cuerpo[4] = {
-		RGB(250, 220, 242), RGB(222, 242, 252), RGB(255, 236, 200), RGB(224, 250, 218)
+	const int filas[6] = {
+		0, alto * 56 / 264, alto * 108 / 264, alto * 160 / 264, alto * 212 / 264, alto
 	};
 
-	HFONT fuente = CreateFontW(-27, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+	// Misma paleta que el aviso del dia: fondo oscuro, cabecera un poco mas
+	// clara, texto blanco en la cabecera y beige en el cuerpo.
+	const COLORREF fondoCabecera = RGB(38, 43, 58);
+	const COLORREF fondoCuerpo = RGB(15, 18, 28);
+	const COLORREF textoCabecera = RGB(255, 255, 255);
+	const COLORREF textoCuerpo = RGB(230, 220, 190);
+
+	HFONT fuenteCabecera = CreateFontW(-18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
 		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 		ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-	HGDIOBJ oldFuente = SelectObject(dc, fuente);
+	HFONT fuenteCuerpo = CreateFontW(-20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+		DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+		ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+	HGDIOBJ oldFuente = SelectObject(dc, fuenteCuerpo);
 	SetBkMode(dc, TRANSPARENT);
-	SetTextColor(dc, RGB(0, 0, 0));
 
 	for (int f = 0; f < 5; f++)
 	{
+		SelectObject(dc, f == 0 ? fuenteCabecera : fuenteCuerpo);
+
 		for (int c = 0; c < 4; c++)
 		{
 			RECT r = { columnas[c], filas[f], columnas[c + 1], filas[f + 1] };
 
-			HBRUSH pincel = CreateSolidBrush(f == 0 ? cabecera[c] : cuerpo[c]);
+			HBRUSH pincel = CreateSolidBrush(f == 0 ? fondoCabecera : fondoCuerpo);
 			FillRect(dc, &r, pincel);
 			DeleteObject(pincel);
 
 			if (celdas[f][c] != NULL)
+			{
+				SetTextColor(dc, f == 0 ? textoCabecera : textoCuerpo);
 				DrawTextW(dc, celdas[f][c], -1, &r,
 					DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+			}
 		}
 	}
 
-	// Cuadricula blanca entre celdas
-	HPEN pluma = CreatePen(PS_SOLID, 2, RGB(255, 255, 255));
+	// Cuadricula tenue entre celdas
+	HPEN pluma = CreatePen(PS_SOLID, 2, RGB(70, 76, 92));
 	HGDIOBJ oldPluma = SelectObject(dc, pluma);
 	for (int c = 1; c < 4; c++)
 	{
@@ -353,8 +364,8 @@ inline void GenerarTablaBGRA(int ancho, int alto,
 		LineTo(dc, ancho, filas[f]);
 	}
 
-	// Borde exterior negro
-	HPEN borde = CreatePen(PS_SOLID, 2, RGB(0, 0, 0));
+	// Borde exterior beige, como el subtitulo del aviso
+	HPEN borde = CreatePen(PS_SOLID, 2, RGB(230, 220, 190));
 	SelectObject(dc, borde);
 	HGDIOBJ oldPincel = SelectObject(dc, GetStockObject(NULL_BRUSH));
 	Rectangle(dc, 1, 1, ancho - 1, alto - 1);
@@ -364,18 +375,38 @@ inline void GenerarTablaBGRA(int ancho, int alto,
 	DeleteObject(pluma);
 
 	SelectObject(dc, oldFuente);
-	DeleteObject(fuente);
+	DeleteObject(fuenteCabecera);
+	DeleteObject(fuenteCuerpo);
 	SelectObject(dc, oldBmp);
 	DeleteDC(dc);
 
-	// La tabla es opaca: se copia el color tal cual y alfa 255
+	// Como el fondo del aviso del dia: el relleno de las celdas queda
+	// semitransparente y el texto y las lineas opacos.
 	unsigned char* p = (unsigned char*)bits;
-	for (int i = 0; i < ancho * alto; i++)
+	for (int y = 0; y < alto; y++)
 	{
-		bgra[i * 4 + 0] = p[i * 4 + 0];
-		bgra[i * 4 + 1] = p[i * 4 + 1];
-		bgra[i * 4 + 2] = p[i * 4 + 2];
-		bgra[i * 4 + 3] = 255;
+		int f = 0;
+		while (f < 4 && y >= filas[f + 1])
+			f++;
+
+		for (int x = 0; x < ancho; x++)
+		{
+			int c = 0;
+			while (c < 3 && x >= columnas[c + 1])
+				c++;
+
+			COLORREF relleno = (f == 0) ? fondoCabecera : fondoCuerpo;
+			int i = y * ancho + x;
+			unsigned char r = p[i * 4 + 2];
+			unsigned char g = p[i * 4 + 1];
+			unsigned char b = p[i * 4 + 0];
+
+			bgra[i * 4 + 0] = b;
+			bgra[i * 4 + 1] = g;
+			bgra[i * 4 + 2] = r;
+			bgra[i * 4 + 3] = (r == GetRValue(relleno) && g == GetGValue(relleno) &&
+				b == GetBValue(relleno)) ? 175 : 255;
+		}
 	}
 
 	DeleteObject(dib);

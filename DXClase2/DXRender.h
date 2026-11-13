@@ -216,8 +216,8 @@ private:
 	MPrimitives* hudTabla = nullptr;
 	std::vector<unsigned char> tablaPixeles;
 	std::wstring tablaClave;
-	int tablaAncho = 730;
-	int tablaAlto = 264;
+	int tablaAncho = 548;
+	int tablaAlto = 198;
 
 	// Quick time event del aro: 4 flechas aleatorias en 2 segundos.
 	// 0 = arriba, 1 = derecha, 2 = abajo, 3 = izquierda
