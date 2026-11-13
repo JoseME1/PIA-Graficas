@@ -24,35 +24,88 @@ struct VS_OUTPUT
     float3 binormal : BINORMAL;
 };
 
+// Ruido de valor 2D para las nubes
+float hash21(float2 p)
+{
+    return frac(sin(dot(p, float2(127.1, 311.7))) * 43758.5453);
+}
+
+float noise21(float2 p)
+{
+    float2 i = floor(p);
+    float2 f = frac(p);
+    f = f * f * (3.0 - 2.0 * f);
+
+    float a = hash21(i);
+    float b = hash21(i + float2(1.0, 0.0));
+    float c = hash21(i + float2(0.0, 1.0));
+    float d = hash21(i + float2(1.0, 1.0));
+
+    return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+}
+
+float fbm21(float2 p)
+{
+    float v = 0.0;
+    float amp = 0.5;
+
+    for (int i = 0; i < 5; i++)
+    {
+        v += amp * noise21(p);
+        p = p * 2.03 + float2(17.3, 9.1);
+        amp *= 0.5;
+    }
+
+    return v;
+}
+
 float4 PS(VS_OUTPUT input) : SV_Target
 {
     float3 dir = normalize(-input.viewDirection);
-    float h = dir.y;
+    float h = dir.y;                        // -1 abajo, 0 horizonte, 1 cenit
 
     float dayAngle = pad.x;
     float sunHeight = sin(dayAngle);
     float dayFactor = saturate(sunHeight / 0.3f);
-
-
     float3 sunDir = normalize(float3(cos(dayAngle), sin(dayAngle), cos(dayAngle) * 0.6f));
 
+    // Atardecer rojo: morado muy oscuro arriba, rojo intenso al medio y
+    // naranja encendido pegado al horizonte.
+    float hh = saturate(h);
+    float3 topColor = float3(0.26, 0.012, 0.08);
+    float3 midColor = float3(0.72, 0.05, 0.05);
+    float3 horizonColor = float3(1.00, 0.33, 0.06);
 
-    float3 dayTop = float3(0.15f, 0.45f, 0.85f);
-    float3 dayHorizon = float3(0.65f, 0.80f, 0.95f);
-    float3 nightTop = float3(0.01f, 0.02f, 0.07f);
-    float3 nightHorizon = float3(0.08f, 0.10f, 0.20f);
+    float3 skyColor = lerp(horizonColor, midColor, saturate(hh * 3.0));
+    skyColor = lerp(skyColor, topColor, saturate((hh - 0.30) * 1.4));
 
-    float3 topColor = lerp(nightTop, dayTop, dayFactor);
-    float3 horizonColor = lerp(nightHorizon, dayHorizon, dayFactor);
+    // Nubes procedurales: se proyectan sobre un plano imaginario, alargadas en
+    // horizontal para que parezcan jirones, y se mueven muy lento.
+    float2 uv = dir.xz / max(h + 0.55, 0.18);
+    uv = uv * float2(2.0, 4.4) + float2(Time * 0.030, Time * 0.010);
 
-    float3 skyColor = lerp(horizonColor, topColor, saturate(h * 1.5f + 0.2f));
+    float cloud = fbm21(uv) * 0.65 + fbm21(uv * 2.7 + float2(5.2, 1.7)) * 0.35;
+    cloud = smoothstep(0.49, 0.60, cloud);
 
-    float sunsetFactor = pow(1.0f - abs(sunHeight), 4.0f);
-    skyColor += float3(0.95f, 0.45f, 0.15f) * sunsetFactor * saturate(1.0f - h) * 0.6f;
+    // Un poco de detalle fino en los bordes para que no se vean tan blandas.
+    float detail = fbm21(uv * 5.5 + float2(2.7, 8.1));
+    cloud = saturate(cloud * (0.85 + 0.30 * detail));
 
+    // Las nubes son mucho mas oscuras que el cielo (morado casi negro) para
+    // que se lean como siluetas, con el borde bajo encendido en rojo.
+    float3 cloudDark = float3(0.055, 0.006, 0.075);
+    float3 cloudWarm = float3(0.46, 0.035, 0.03);
+    float3 cloudColor = lerp(cloudWarm, cloudDark, saturate((hh - 0.05) * 2.6));
+
+    skyColor = lerp(skyColor, cloudColor, cloud * 0.95);
+
+    // Sol: disco y halo calido
     float sunDot = saturate(dot(dir, sunDir));
-    skyColor += float3(1.0f, 0.9f, 0.6f) * pow(sunDot, 350.0f) * 2.0f;
-    skyColor += float3(1.0f, 0.8f, 0.4f) * pow(sunDot, 8.0f) * 0.25f * dayFactor;
+    skyColor += float3(1.0, 0.45, 0.12) * pow(sunDot, 300.0) * 1.2;
+    skyColor += float3(1.0, 0.35, 0.08) * pow(sunDot, 6.0) * 0.35 * dayFactor;
+
+    // De noche el rojo se apaga sin perder el tono
+    skyColor *= lerp(0.40, 1.0, dayFactor);
 
     return float4(skyColor, 1.0f);
 }
