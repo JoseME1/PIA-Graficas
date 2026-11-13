@@ -5,12 +5,13 @@
 #include <math.h>
 
 // Genera en 'bgra' una imagen BGRA (fila superior primero, con alfa) del texto
-// centrado sobre fondo transparente, usando GDI.
+// sobre fondo transparente, usando GDI. Por defecto el texto va centrado; con
+// 'izquierda' se alinea al borde izquierdo de la imagen.
 // GDI no escribe el canal alfa, asi que se saca del brillo: el texto se dibuja
 // en blanco sobre negro y ese valor pasa a ser el alfa.
 inline void GenerarTextoBGRA(const wchar_t* texto, int ancho, int alto, int altoFuente,
 	unsigned char r, unsigned char g, unsigned char b,
-	std::vector<unsigned char>& bgra)
+	std::vector<unsigned char>& bgra, bool izquierda = false)
 {
 	bgra.assign((size_t)ancho * alto * 4, 0);
 
@@ -46,9 +47,10 @@ inline void GenerarTextoBGRA(const wchar_t* texto, int ancho, int alto, int alto
 	SetTextColor(dc, RGB(255, 255, 255));
 
 	// DT_VCENTER solo funciona con una linea; para varias se alinea arriba
+	UINT alineacion = izquierda ? DT_LEFT : DT_CENTER;
 	UINT formato = (wcschr(texto, L'\n') != NULL)
-		? (DT_CENTER | DT_TOP | DT_WORDBREAK | DT_NOPREFIX)
-		: (DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+		? (alineacion | DT_TOP | DT_WORDBREAK | DT_NOPREFIX)
+		: (alineacion | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
 
 	RECT rc = { 0, 0, ancho, alto };
 	DrawTextW(dc, texto, -1, &rc, formato);

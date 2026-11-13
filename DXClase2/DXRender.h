@@ -806,11 +806,16 @@ public:
 		spaceUltiLast = spaceDown;
 
 		// E: durante los dias de entrenamiento entrena en el punto cercano;
-		// el dia de la carrera la usa para arrancar junto a la meta.
+		// en la fase de las almas recoge la que este a tiro; el dia de la
+		// carrera la usa para arrancar junto a la meta.
 		bool eDown = (keyboardState[DIK_E] != 0);
 		if (eDown && !eLast && !modoRuta && !modoCamara)
 		{
-			if (diaActual < 3)
+			if (faseAlmas)
+			{
+				RecogerAlmaCercana();
+			}
+			else if (diaActual < 3)
 			{
 				IntentarEntrenar();
 			}
@@ -1415,8 +1420,24 @@ public:
 		return true;
 	}
 
+	// Devuelve true si (x, z) esta lo bastante lejos de las almas ya colocadas.
+	bool AlmaLejos(float x, float z, int hasta)
+	{
+		for (int j = 0; j < hasta; j++)
+		{
+			float dx = x - almasPos[j].x;
+			float dz = z - almasPos[j].z;
+
+			if (dx * dx + dz * dz < 55.0f * 55.0f)
+				return false;
+		}
+
+		return true;
+	}
+
 	// Reparte las 5 almas por cualquier parte del mapa, evitando los objetos
-	// con colisiones y sin que queden apiladas entre si.
+	// con colisiones y sin que queden apiladas entre si. La primera siempre
+	// queda escondida dentro del castillo.
 	void ColocarAlmas()
 	{
 		const float margen = 15.0f;			// el terreno mide 300 x 300
@@ -1427,30 +1448,39 @@ public:
 			almaDisponible[i] = true;
 
 			float x = 150.0f, z = 150.0f;
+			bool encontrada = false;
 
-			for (int intento = 0; intento < 400; intento++)
+			// Alma escondida en el patio del castillo (X 120-180, Z 232-268)
+			if (i == 0)
 			{
-				x = margen + (float)(rand() % (int)rango);
-				z = margen + (float)(rand() % (int)rango);
-
-				if (!PosicionLibreAlma(x, z))
-					continue;
-
-				bool cerca = false;
-				for (int j = 0; j < i; j++)
+				for (int intento = 0; intento < 400 && !encontrada; intento++)
 				{
-					float dx = x - almasPos[j].x;
-					float dz = z - almasPos[j].z;
+					float px = 120.0f + (float)(rand() % 60);
+					float pz = 232.0f + (float)(rand() % 36);
 
-					if (dx * dx + dz * dz < 40.0f * 40.0f)
+					if (PosicionLibreAlma(px, pz))
 					{
-						cerca = true;
-						break;
+						x = px;
+						z = pz;
+						encontrada = true;
 					}
 				}
+			}
 
-				if (!cerca)
-					break;
+			for (int intento = 0; intento < 400 && !encontrada; intento++)
+			{
+				float px = margen + (float)(rand() % (int)rango);
+				float pz = margen + (float)(rand() % (int)rango);
+
+				if (!PosicionLibreAlma(px, pz))
+					continue;
+
+				if (!AlmaLejos(px, pz, i))
+					continue;
+
+				x = px;
+				z = pz;
+				encontrada = true;
 			}
 
 			almasPos[i].x = x;
@@ -1504,15 +1534,9 @@ public:
 		}
 	}
 
-	// Contador y recogida de almas. El minuto empieza cuando se va el aviso y
-	// termina al agotarse el tiempo o al juntar las 5.
-	void ActualizarFaseAlmas()
+	// Indice del alma que el jugador tiene a tiro, o -1 si no hay ninguna.
+	int AlmaCercana()
 	{
-		if (bannerTiempo > 0.0f)
-			return;
-
-		almasTiempo -= deltaTime;
-
 		for (int i = 0; i < almasTotal; i++)
 		{
 			if (!almaDisponible[i])
@@ -1522,11 +1546,31 @@ public:
 			float dz = almasPos[i].z - playerPos.z;
 
 			if (dx * dx + dz * dz <= radioAlma * radioAlma)
-			{
-				almaDisponible[i] = false;
-				almasRecogidas++;
-			}
+				return i;
 		}
+
+		return -1;
+	}
+
+	// Recoge el alma que este a tiro (tecla E)
+	void RecogerAlmaCercana()
+	{
+		int i = AlmaCercana();
+		if (i < 0)
+			return;
+
+		almaDisponible[i] = false;
+		almasRecogidas++;
+	}
+
+	// Contador y recogida de almas. El minuto empieza cuando se va el aviso y
+	// termina al agotarse el tiempo o al juntar las 5.
+	void ActualizarFaseAlmas()
+	{
+		if (bannerTiempo > 0.0f)
+			return;
+
+		almasTiempo -= deltaTime;
 
 		if (almasRecogidas >= almasTotal || almasTiempo <= 0.0f)
 		{
@@ -1534,8 +1578,12 @@ public:
 			return;
 		}
 
-		wchar_t buffer[96];
-		swprintf_s(buffer, L"Almas de poder: %d/%d", almasRecogidas, almasTotal);
+		wchar_t buffer[160];
+		if (AlmaCercana() >= 0)
+			swprintf_s(buffer, L"Almas de poder: %d/%d\nPulsa  E  para recoger",
+				almasRecogidas, almasTotal);
+		else
+			swprintf_s(buffer, L"Almas de poder: %d/%d", almasRecogidas, almasTotal);
 		hudTexto = buffer;
 	}
 
@@ -2086,7 +2134,7 @@ public:
 		if (opciones != almasOpcionesDibujado)
 		{
 			GenerarTextoBGRA(opciones.c_str(), anchoOpciones, altoOpciones, fuenteOpciones,
-				255, 215, 60, almasOpcionesPixeles);
+				255, 215, 60, almasOpcionesPixeles, true);
 			hudAlmasOpciones->SetTextureFromPixels((UINT)anchoOpciones, (UINT)altoOpciones,
 				almasOpcionesPixeles.data());
 			almasOpcionesDibujado = opciones;
@@ -2112,7 +2160,7 @@ public:
 			(float)anchoTitulo, (float)altoTitulo, hudScreenW, hudScreenH);
 		hudAlmasRestantes->DrawHUD(xFondo + 40.0f, yFondo + 190.0f,
 			(float)anchoRestantes, (float)altoRestantes, hudScreenW, hudScreenH);
-		hudAlmasOpciones->DrawHUD(xFondo + 660.0f, yFondo + 180.0f,
+		hudAlmasOpciones->DrawHUD(xFondo + 880.0f, yFondo + 180.0f,
 			(float)anchoOpciones, (float)altoOpciones, hudScreenW, hudScreenH);
 
 		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
@@ -2181,9 +2229,9 @@ public:
 
 		bannerTiempo -= deltaTime;
 
-		const int anchoTitulo = 1100, altoTitulo = 160, fuenteTitulo = 96;
+		const int anchoTitulo = 1400, altoTitulo = 160, fuenteTitulo = 96;
 		const int anchoSub = 1100, altoSub = 70, fuenteSub = 40;
-		const float anchoFondo = 1000.0f;
+		const float anchoFondo = 1200.0f;
 		const float altoFondo = 250.0f;
 		float xFondo = (hudScreenW - anchoFondo) * 0.5f;
 		float yFondo = hudScreenH * 0.10f;
@@ -2547,7 +2595,7 @@ public:
 			D3DXMATRIX escala, traslacion;
 			D3DXMatrixScaling(&escala, pulso, pulso, pulso);
 			D3DXMatrixTranslation(&traslacion, almasPos[i].x,
-				almasPos[i].y + 1.75f + flotar, almasPos[i].z);
+				almasPos[i].y + 1.3f + flotar, almasPos[i].z);
 
 			almaObjetos[i]->UpdateScene(escala * traslacion);
 			almaObjetos[i]->DrawScene(camara);
@@ -2707,7 +2755,7 @@ public:
 		// Almas de poder: billboards con la llama generada en CPU
 		for (int i = 0; i < almasTotal; i++)
 		{
-			almaObjetos[i] = new MPrimitives(d3d11Device, d3d11DevCon, 3.5f, 1.6f, L"", ShaderTexto);
+			almaObjetos[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.6f, 1.2f, L"", ShaderTexto);
 			GenerarAlmaBGRA(96, 256, i * 1.7f + 0.4f, almaPixeles);
 			almaObjetos[i]->SetTextureFromPixels(96, 256, almaPixeles.data());
 		}
