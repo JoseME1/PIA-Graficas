@@ -1,0 +1,46 @@
+# Circuito: la primera linea de puntos es la meta, luego los checkpoints en orden.
+# Generado dentro del juego con F2 + P. Los valores de abajo se pueden editar a mano.
+radio_meta = 9.00
+radio_punto = 9.00
+radio_aro = 6.00
+radio_entrenamiento = 6.00
+hud_y = 0.62
+altura_marcador = 0.35
+velocidad = 12.00
+aceleracion = 2.00
+resistencia = 15.00
+127.41, 151.56
+204.25, 185.07
+199.52, 257.21
+197.48, 273.32
+181.68, 280.00
+99.85, 273.72
+66.03, 225.42
+46.67, 180.28
+49.68, 126.82
+55.40, 97.85
+77.62, 64.19
+113.18, 37.26
+126.19, 29.27
+143.38, 31.22
+147.16, 44.22
+147.28, 57.68
+138.91, 66.03
+125.42, 71.60
+111.22, 79.17
+97.15, 91.86
+79.46, 120.87
+90.19, 132.95
+127.07, 151.66
+aro = 199.40, 181.35
+aro = 196.88, 251.39
+aro = 147.19, 277.44
+aro = 72.06, 230.35
+aro = 48.89, 134.62
+aro = 74.24, 68.53
+aro = 124.82, 31.88
+aro = 123.74, 69.13
+aro = 86.44, 126.26
+entrenamiento = velocidad, 229.47, 169.36
+entrenamiento = aceleracion, 230.46, 155.45
+entrenamiento = resistencia, 231.65, 138.71

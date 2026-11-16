@@ -1,6 +1,9 @@
 #ifndef _MeshPrimitives_
 #define _MeshPrimitives_
 
+#include <map>
+#include <string>
+
 class MPrimitives {
 private:
 	ID3D11Buffer* VertexBuffer;
@@ -16,13 +19,14 @@ private:
 	ID3D11Device* d3d11Device;
 	ID3D11DeviceContext* d3d11DevCon;
 
-	ID3D11ShaderResourceView* Texture;
-	ID3D11ShaderResourceView* Texture2;
-	ID3D11ShaderResourceView* NormalTexture;
+	ID3D11ShaderResourceView* Texture = nullptr;
+	ID3D11ShaderResourceView* Texture2 = nullptr;
+	ID3D11ShaderResourceView* NormalTexture = nullptr;
+	ID3D11ShaderResourceView* ownTexture = nullptr;
 	ID3D11SamplerState* TexSamplerState;
 
 	//Bitmap
-	ID3D11Texture2D* renderTargetTextureGUI;
+	ID3D11Texture2D* renderTargetTextureGUI = nullptr;
 
 	D3DXMATRIX mapView;
 	D3DXMATRIX mapProjection;
@@ -76,7 +80,7 @@ private:
 		D3DXVECTOR3 biTangent;
 	} ;
 
-	SimpleVertex* heightMapDummy;
+	SimpleVertex* heightMapDummy = nullptr;
 
 	
 
@@ -87,7 +91,7 @@ public:
 		float Radius;
 	};
 
-	SphereBoundingInfo* PrimitiveBoundings;
+	SphereBoundingInfo* PrimitiveBoundings = nullptr;
 
 	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Size, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
 	{
@@ -97,6 +101,17 @@ public:
 		InitScene(d3d11Device, d3d11DevCon, texturePath, textureNormalPath, ShaderType);
 		createCube();
 		
+	}
+
+	// Octaedro (diamante) de tamano 1: se escala con UpdateScene. Se usa para el
+	// indicador verde sobre la calaca del jugador.
+	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, LPCWSTR texturePath, int ShaderType)
+	{
+		this->Size = 1.0f;
+		light.specularPower = 2;
+
+		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderType);
+		createOctahedron();
 	}
 
 	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, int Stacks, int Slices, float Radius, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
@@ -124,9 +139,12 @@ public:
 		this->Radius = Radius;
 		this->radius = radius;
 
+		// createTorus solo escribe los indices de las caras que unen las filas y columnas,
+		// asi que el conteo real es (Slices-1)*(Stacks-1)*6 y no Slices*Stacks*6
+		// (el resto quedaba sin inicializar y se dibujaba como geometria basura).
 		int numVertexInTwoTriangles = 6;
 		numVertex = Slices * Stacks;
-		numIndex = Slices * Stacks * numVertexInTwoTriangles;
+		numIndex = (Slices - 1) * (Stacks - 1) * numVertexInTwoTriangles;
 
 		InitScene(d3d11Device, d3d11DevCon, texturePath, textureNormalPath, ShaderType);
 		createTorus();
@@ -193,15 +211,63 @@ public:
 		createBillboard();
 	}
 
-	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Height, float Width, LPCWSTR texturePath, Camara* camara){
+	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Height, float Width, LPCWSTR texturePath, Camara* camara, int ShaderType = ShaderGUI){
 
 
 		
 		this->Height = Height;
 		this->Width = Width;
 
-		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderGUI);
+		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderType);
 		createBitMap(camara);
+	}
+
+	// Carga una textura una sola vez por ruta y comparte el SRV entre todas las instancias,
+	// para no duplicar la misma textura en VRAM una vez por primitiva.
+	static ID3D11ShaderResourceView* LoadTextureCached(ID3D11Device* device, LPCWSTR path)
+	{
+		if (path == NULL || path[0] == L'\0')
+			return nullptr;
+
+		static std::map<std::wstring, ID3D11ShaderResourceView*> cache;
+		std::wstring key(path);
+
+		std::map<std::wstring, ID3D11ShaderResourceView*>::iterator it = cache.find(key);
+		if (it != cache.end())
+			return it->second;
+
+		ID3D11ShaderResourceView* srv = nullptr;
+		if (FAILED(D3DX11CreateShaderResourceViewFromFile(device, path, NULL, NULL, &srv, NULL)))
+			srv = nullptr;
+
+		cache[key] = srv;
+		return srv;
+	}
+
+	// Compila cada shader una sola vez y comparte el blob compilado entre todas las instancias
+	// (cada archivo .vs/.ps de este proyecto tiene un solo entry point).
+	static ID3D10Blob* CompileShaderCached(LPCWSTR file, LPCSTR entry, LPCSTR target)
+	{
+		static std::map<std::wstring, ID3D10Blob*> cache;
+		std::wstring key(file);
+
+		std::map<std::wstring, ID3D10Blob*>::iterator it = cache.find(key);
+		if (it != cache.end())
+			return it->second;
+
+		ID3D10Blob* blob = nullptr;
+		ID3D10Blob* errors = nullptr;
+
+		if (FAILED(D3DX11CompileFromFile(file, 0, 0, entry, target, 0, 0, 0, &blob, &errors, 0)))
+		{
+			MessageBoxA(NULL, errors ? (char*)errors->GetBufferPointer() : "Error al compilar el shader",
+				"Error de shader", MB_OK | MB_ICONERROR);
+			if (errors) errors->Release();
+			ExitProcess(1);
+		}
+
+		cache[key] = blob;
+		return blob;
 	}
 
 	bool InitScene(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
@@ -249,27 +315,18 @@ public:
 		case ShaderPasto:
 			vertexShaderFile = L"vertexShaderPasto.vs";
 			break;
+		case ShaderTexto:
+			pixelShaderFile = L"pixelShaderTexto.ps";
+			break;
 		default:
 			break;
 		}
 
 		
 
-		//Compile Shaders from shader file
-		D3DX11CompileFromFile(vertexShaderFile, 0, 0, "VS", "vs_4_0", 0, 0, 0, &VS_Buffer, 0, 0);
-		D3DX11CompileFromFile(pixelShaderFile, 0, 0, "PS", "ps_4_0", 0, 0, 0, &PS_Buffer, 0, 0);
-
-		//DEBUG PARA EXCEPCIONES DE PIXEL SHADER, DESCOMENTAR EN CASO DE EXCEPCION
-		/*ID3D10Blob* errorBlob = nullptr;
-		HRESULT hrVS = D3DX11CompileFromFile(L"vertexShader.vs", 0, 0, "VS", "vs_4_0", 0, 0, 0, &VS_Buffer, &errorBlob, 0);
-		if (FAILED(hrVS) && errorBlob)
-			MessageBoxA(NULL, (char*)errorBlob->GetBufferPointer(), "Error VS", MB_OK);
-
-		errorBlob = nullptr;
-		HRESULT hrPS = D3DX11CompileFromFile(pixelShaderFile, 0, 0, "PS", "ps_4_0", 0, 0, 0, &PS_Buffer, &errorBlob, 0);
-		if (FAILED(hrPS) && errorBlob)
-			MessageBoxA(NULL, (char*)errorBlob->GetBufferPointer(), "Error PS", MB_OK);
-		*/
+		//Compile Shaders from shader file (cacheados: cada shader se compila una sola vez)
+		VS_Buffer = CompileShaderCached(vertexShaderFile, "VS", "vs_4_0");
+		PS_Buffer = CompileShaderCached(pixelShaderFile, "PS", "ps_4_0");
 
 
 		//Create the Shader Objects
@@ -306,15 +363,14 @@ public:
 			&cbBuffer);
 
 		// Set the texture
-		D3DX11CreateShaderResourceViewFromFile(d3d11Device, texturePath,
-			NULL, NULL, &Texture, NULL);
+		Texture = LoadTextureCached(d3d11Device, texturePath);
 
 		// Set the normal texture
-		D3DX11CreateShaderResourceViewFromFile(d3d11Device, textureNormalPath,
-			NULL, NULL, &NormalTexture, NULL);
+		NormalTexture = LoadTextureCached(d3d11Device, textureNormalPath);
 
-		D3DX11CreateShaderResourceViewFromFile(d3d11Device, L"Texturas/rock.jpg",
-			NULL, NULL, &Texture2, NULL);
+		// La segunda capa de textura solo la usan los objetos con shader de multitextura
+		if (ShaderType == ShaderMultitextura)
+			Texture2 = LoadTextureCached(d3d11Device, L"Texturas/rock.jpg");
 
 		// Describe the Sample State
 		D3D11_SAMPLER_DESC sampDesc;
@@ -512,6 +568,98 @@ public:
 			&IndexBuffer);
 	}
 
+	void createOctahedron()
+	{
+		D3DXVECTOR3 arriba(0.0f, 0.5f, 0.0f);
+		D3DXVECTOR3 abajo(0.0f, -0.5f, 0.0f);
+		D3DXVECTOR3 ecuador[4] = {
+			D3DXVECTOR3(0.5f, 0.0f, 0.0f),
+			D3DXVECTOR3(0.0f, 0.0f, 0.5f),
+			D3DXVECTOR3(-0.5f, 0.0f, 0.0f),
+			D3DXVECTOR3(0.0f, 0.0f, -0.5f)
+		};
+
+		// 4 caras hacia arriba y 4 hacia abajo, con vertices propios en cada cara
+		// para que la normal por cara de el aspecto facetado de un diamante.
+		SimpleVertex vertex[24];
+		DWORD indices[24];
+		int v = 0;
+
+		for (int cara = 0; cara < 8; cara++)
+		{
+			D3DXVECTOR3 a, b, c;
+			if (cara < 4)
+			{
+				a = arriba;
+				b = ecuador[cara];
+				c = ecuador[(cara + 1) % 4];
+			}
+			else
+			{
+				a = abajo;
+				b = ecuador[(cara + 1) % 4];
+				c = ecuador[cara % 4];
+			}
+
+			D3DXVECTOR3 normal;
+			D3DXVECTOR3 e1 = b - a;
+			D3DXVECTOR3 e2 = c - a;
+			D3DXVec3Cross(&normal, &e1, &e2);
+			D3DXVec3Normalize(&normal, &normal);
+
+			// La normal debe apuntar hacia afuera del octaedro
+			D3DXVECTOR3 centro = (a + b + c) / 3.0f;
+			if (D3DXVec3Dot(&normal, &centro) < 0.0f)
+			{
+				D3DXVECTOR3 temporal = b;
+				b = c;
+				c = temporal;
+				normal = -normal;
+			}
+
+			D3DXVECTOR3 caras[3] = { a, b, c };
+			for (int i = 0; i < 3; i++)
+			{
+				vertex[v].pos = caras[i];
+				vertex[v].tex = D3DXVECTOR2(0.5f + caras[i].x, 0.5f + caras[i].z);
+				vertex[v].normal = normal;
+				indices[v] = v;
+				v++;
+			}
+		}
+
+		numVertex = 24;
+		numIndex = 24;
+		setTangentBinormal(vertex, indices, 3);
+
+		D3D11_BUFFER_DESC vertexBufferDesc;
+		ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
+
+		vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+		vertexBufferDesc.ByteWidth = sizeof(SimpleVertex)* numVertex;
+		vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		vertexBufferDesc.CPUAccessFlags = 0;
+		vertexBufferDesc.MiscFlags = 0;
+
+		D3D11_SUBRESOURCE_DATA vertexBufferData;
+		ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
+		vertexBufferData.pSysMem = vertex;
+		d3d11Device->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &VertexBuffer);
+
+		D3D11_BUFFER_DESC indexBufferDesc;
+		ZeroMemory(&indexBufferDesc, sizeof(indexBufferDesc));
+
+		indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+		indexBufferDesc.ByteWidth = sizeof(DWORD)* numIndex;
+		indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+		indexBufferDesc.CPUAccessFlags = 0;
+		indexBufferDesc.MiscFlags = 0;
+
+		D3D11_SUBRESOURCE_DATA iinitData;
+		iinitData.pSysMem = indices;
+		d3d11Device->CreateBuffer(&indexBufferDesc, &iinitData, &IndexBuffer);
+	}
+
 	void createSphere()
 	{
 		//Create the vertex buffer
@@ -577,7 +725,9 @@ public:
 				indices[index++] = index2;
 			}
 		}
-		setTangentBinormal(vertex, indices, 6);
+		// Solo se llenan (Stacks-1)*(Slices-1)*6 indices, no Slices*Stacks*6
+		numIndex = index;
+		setTangentBinormal(vertex, indices, 3);
 
 		D3D11_BUFFER_DESC indexBufferDesc;
 		ZeroMemory(&indexBufferDesc,
@@ -912,23 +1062,25 @@ public:
 
 		//  Abrimos el heightmap in binario.
 		error = fopen_s(&filePtr, filename, "rb");
-		if (error != 0)
+		if (error != 0 || filePtr == NULL)
 		{
-			//Error
+			return;
 		}
 
 		// Leemos la cabecera del archivo.
 		count = fread(&bitmapFileHeader, sizeof(BITMAPFILEHEADER), 1, filePtr);
 		if (count != 1)
 		{
-			//Error
+			fclose(filePtr);
+			return;
 		}
 
 		// Leemos la cabecera de info del archivo.
 		count = fread(&bitmapInfoHeader, sizeof(BITMAPINFOHEADER), 1, filePtr);
 		if (count != 1)
 		{
-			//Error
+			fclose(filePtr);
+			return;
 		}
 
 		// Guardamos el ancho y largo del terreno.
@@ -952,7 +1104,9 @@ public:
 		count = fread(bitmapImage, 1, imageSize, filePtr);
 		if (count != imageSize)
 		{
-			//return false;
+			delete[] bitmapImage;
+			fclose(filePtr);
+			return;
 		}
 
 		// Cerramos el archivo.
@@ -1097,6 +1251,13 @@ public:
 			}
 		}
 
+		// El terreno no calcula tangentes; las inicializamos para no mandar basura al VS
+		for (index = 0; index < (int)numVertex; index++)
+		{
+			vertex[index].tangent = D3DXVECTOR3(1.0f, 0.0f, 0.0f);
+			vertex[index].biTangent = D3DXVECTOR3(0.0f, 0.0f, 1.0f);
+		}
+
 		D3D11_BUFFER_DESC vertexBufferDesc;
 		ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
 
@@ -1147,11 +1308,25 @@ public:
 
 		//Leemos hasta los ":" para leer la cantidada de vertices
 		fin.get(input);
-		while (input != ':')
+		while (input != ':' && !fin.eof())
 			fin.get(input);
+
+		if (fin.eof())
+		{
+			fin.close();
+			return false;
+		}
 
 		//Leemos la cantidad de vertices
 		fin >> numVertex;
+
+		if (fin.fail() || numVertex == 0)
+		{
+			numVertex = 0;
+			numIndex = 0;
+			fin.close();
+			return false;
+		}
 
 		//Ponemos que la cantidad de indices sea la misma que la cantidad de vertices
 		numIndex = numVertex;
@@ -1162,8 +1337,16 @@ public:
 
 		//Leemos desde el principio de la informacion
 		fin.get(input);
-		while (input != ':')
+		while (input != ':' && !fin.eof())
 			fin.get(input);
+
+		if (fin.eof())
+		{
+			fin.close();
+			delete[] ModelObject;
+			return false;
+		}
+
 		fin.get(input);
 		fin.get(input);
 
@@ -1339,6 +1522,7 @@ public:
 
 		consBuffPS.light = light;
 		consBuffPS.Time = g_Time;
+		consBuffPS.pad[0] = g_DayAngle;
 		d3d11DevCon->UpdateSubresource(cbBufferPS, 0, NULL, &consBuffPS, 0, 0);
 		d3d11DevCon->PSSetConstantBuffers(0, 1, &cbBufferPS);
 
@@ -1382,6 +1566,79 @@ public:
 		d3d11DevCon->PSSetSamplers(0, 1, &TexSamplerState);
 
 		//Dibujamos el bitmap
+		d3d11DevCon->DrawIndexed(numIndex, 0, 0);
+	}
+
+	// Reemplaza la textura del quad por una generada en CPU (BGRA, fila superior primero).
+	// No libera la textura anterior si vino de la cache compartida: solo la propia.
+	void SetTextureFromPixels(UINT w, UINT h, const unsigned char* bgra)
+	{
+		D3D11_TEXTURE2D_DESC td;
+		ZeroMemory(&td, sizeof(td));
+		td.Width = w;
+		td.Height = h;
+		td.MipLevels = 1;
+		td.ArraySize = 1;
+		td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+		td.SampleDesc.Count = 1;
+		td.Usage = D3D11_USAGE_IMMUTABLE;
+		td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+
+		D3D11_SUBRESOURCE_DATA sd;
+		ZeroMemory(&sd, sizeof(sd));
+		sd.pSysMem = bgra;
+		sd.SysMemPitch = w * 4;
+
+		ID3D11Texture2D* tex = nullptr;
+		if (FAILED(d3d11Device->CreateTexture2D(&td, &sd, &tex)))
+			return;
+
+		ID3D11ShaderResourceView* srv = nullptr;
+		d3d11Device->CreateShaderResourceView(tex, NULL, &srv);
+		tex->Release();
+
+		if (ownTexture != nullptr)
+			ownTexture->Release();
+
+		ownTexture = srv;
+		Texture = ownTexture;
+	}
+
+	// Dibuja el quad en un rectangulo de pantalla en pixeles (origen arriba-izquierda).
+	// El quad de createBitMap mide 2*Width por 2*Height unidades.
+	void DrawHUD(float x, float y, float w, float h, int screenW, int screenH)
+	{
+		float ndcW = 2.0f * w / (float)screenW;
+		float ndcH = 2.0f * h / (float)screenH;
+		float ndcX = 2.0f * (x + w * 0.5f) / (float)screenW - 1.0f;
+		float ndcY = 1.0f - 2.0f * (y + h * 0.5f) / (float)screenH;
+
+		D3DXMATRIX escala, traslacion, identidad;
+		D3DXMatrixScaling(&escala, ndcW / (2.0f * Width), ndcH / (2.0f * Height), 1.0f);
+		D3DXMatrixTranslation(&traslacion, ndcX, ndcY, 0.5f);
+		D3DXMatrixIdentity(&identidad);
+
+		D3DXMATRIX WorldViewProjection = escala * traslacion;
+
+		D3DXMatrixTranspose(&consBuff.WorldViewProjection, &WorldViewProjection);
+		D3DXMatrixTranspose(&consBuff.World, &identidad);
+		consBuff.CameraPos = D3DXVECTOR3(0.0f, 0.0f, -1.0f);
+		consBuff.Time = g_Time;
+		d3d11DevCon->UpdateSubresource(cbBuffer, 0, NULL, &consBuff, 0, 0);
+		d3d11DevCon->VSSetConstantBuffers(0, 1, &cbBuffer);
+
+		d3d11DevCon->VSSetShader(VS, 0, 0);
+		d3d11DevCon->PSSetShader(PS, 0, 0);
+		d3d11DevCon->IASetInputLayout(vertLayout);
+		d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+		UINT stride = sizeof(SimpleVertex);
+		UINT offset = 0;
+		d3d11DevCon->IASetVertexBuffers(0, 1, &VertexBuffer, &stride, &offset);
+		d3d11DevCon->IASetIndexBuffer(IndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+
+		d3d11DevCon->PSSetShaderResources(0, 1, &Texture);
+		d3d11DevCon->PSSetSamplers(0, 1, &TexSamplerState);
 		d3d11DevCon->DrawIndexed(numIndex, 0, 0);
 	}
 

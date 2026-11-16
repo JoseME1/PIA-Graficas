@@ -90,6 +90,7 @@
     <ClInclude Include="DXRender.h" />
     <ClInclude Include="Light.h" />
     <ClInclude Include="MeshPrimitives.h" />
+    <ClInclude Include="Texto.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="pixelShader.ps" />
@@ -97,6 +98,7 @@
     <None Include="pixelShaderCielo.ps" />
     <None Include="pixelShaderGUI.ps" />
     <None Include="pixelShaderMultitextura.ps" />
+    <None Include="pixelShaderTexto.ps" />
     <None Include="vertexShader.vs" />
     <None Include="vertexShaderAgua.vs" />
     <None Include="vertexShaderPasto.vs" />
