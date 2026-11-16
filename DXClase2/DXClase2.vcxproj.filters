@@ -15,6 +15,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="LogicaJuego.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -36,6 +39,9 @@
       <Filter>Resource Files</Filter>
     </ClInclude>
     <ClInclude Include="AudioManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Texto.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -62,6 +68,9 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="pixelShaderCielo.ps">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="pixelShaderTexto.ps">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>

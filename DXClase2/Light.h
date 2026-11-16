@@ -5,10 +5,12 @@ struct Light
 	D3DXVECTOR4 ambient;
 	D3DXVECTOR4 diffuse;
 	D3DXVECTOR4 specular;
-} light;
+};
 
-float g_Time = 0.0f;
+extern Light light;
+
+extern float g_Time;
 
 // Angulo del sol para el cielo (lo controla el horario de entrenamiento:
 // mañana, dia, tarde o noche). El shader del cielo lo lee de "pad.x".
-float g_DayAngle = 1.4f;
+extern float g_DayAngle;

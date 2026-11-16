@@ -13,6 +13,10 @@
 using namespace std;
 #include "DXRender.h"
 
+Light light;
+float g_Time = 0.0f;
+float g_DayAngle = 1.4f;
+
 LPCTSTR WndClassName = L"firstwindow";
 HWND hwnd = NULL;
 
