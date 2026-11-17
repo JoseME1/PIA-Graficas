@@ -510,6 +510,7 @@ bool DXRender::PosicionLibreAlma(float x, float z)
 {
 		for (int i = 0; i < 9; i++)
 		{
+			if (i == 5) continue;
 			float dx = x - colliders[i].x;
 			float dz = z - colliders[i].z;
 			float r = colliders[i].radius + 2.0f;
@@ -518,10 +519,12 @@ bool DXRender::PosicionLibreAlma(float x, float z)
 				return false;
 		}
 
-		for (int i = 0; i < 20; i++)
+		for (size_t i = 0; i < 23 + colisionesCementerio.size(); i++)
 		{
-			if (x > castleWalls[i].minX - 2.0f && x < castleWalls[i].maxX + 2.0f &&
-				z > castleWalls[i].minZ - 2.0f && z < castleWalls[i].maxZ + 2.0f)
+			if (i == 20) continue;
+			const BoxCollider& caja = i < 23 ? castleWalls[i] : colisionesCementerio[i - 23];
+			if (x > caja.minX - 2.0f && x < caja.maxX + 2.0f &&
+				z > caja.minZ - 2.0f && z < caja.maxZ + 2.0f)
 				return false;
 		}
 

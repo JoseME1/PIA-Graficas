@@ -47,15 +47,18 @@ private:
 	MPrimitives* gato;
 	MPrimitives* tumba;
 	MPrimitives* tree2;
-	MPrimitives* ataud;
 	MPrimitives* calaca;
 	MPrimitives* calaca2;
-	ModeloAssimp modeloPruebaAnimaciones;
-	ModeloAssimp modeloPruebaSegundoClip;
-	MPrimitives* calacaIdle = nullptr;
-	MPrimitives* calacaIdleFbx = nullptr;
-	double tiempoIdle = 0.0;
+	ModeloAssimp modeloCalacaAnimada;
+	bool calacasAnimadas = false;
+	double tiempoAnimacionJugador = 0.0;
+	int fotogramaJugador = -1;
+	int clipJugador = 0;
+	D3DXVECTOR3 posicionJugadorAnterior = D3DXVECTOR3(150.0f, 0.0f, 200.0f);
 	MPrimitives* castillo;
+	ModeloAssimp modeloGradas, modeloBanderaInicio, modeloCementerio;
+	std::vector<MPrimitives*> gradasOBJ, banderaInicioOBJ, cementerioOBJ;
+	MPrimitives* publicoGradas[5] = {};
 	MPrimitives* arbolmuerto1;
 	MPrimitives* arbolmuerto2;
 	MPrimitives* debugBox;
@@ -76,7 +79,9 @@ private:
 	{
 		float minX, maxX, minZ, maxZ;
 	};
-	BoxCollider castleWalls[20];
+	BoxCollider castleWalls[23];
+	std::vector<BoxCollider> colisionesCementerio;
+	const float cementerioX = 205.6f, cementerioZ = 207.3f;
 
 	Camara *camara;
 	Camara *skyCamara;
@@ -86,6 +91,10 @@ private:
 	// HUD de texto en pantalla
 	MPrimitives* hudQuad = nullptr;
 	MPrimitives* hudMarco = nullptr;
+	MPrimitives* hudCoordenadas = nullptr;
+	bool mostrarCoordenadas = false, f4Last = false;
+	std::wstring coordenadasDibujadas;
+	std::vector<unsigned char> coordenadasPixeles;
 	ID3D11BlendState* alphaBlendState = nullptr;
 	std::wstring hudTexto;
 	std::wstring hudTextoDibujado;
@@ -203,6 +212,9 @@ private:
 		float yaw;
 		std::vector<bool> arosUsados;
 		MPrimitives* modelo;
+		double tiempoAnimacion = 0.0;
+		int clipAnimacion = 0;
+		int fotogramaAnimacion = -1;
 	};
 	CalacaIA calacasIA[4];
 	float relojCarrera = 0.0f;
@@ -398,6 +410,35 @@ private:
 
 
 public:
+	D3DXMATRIX TransformacionCementerio()
+	{
+		D3DXMATRIX centrar, escala, rotacion, ubicar;
+		// La entrada apunta a +X en el OBJ. El pivote mantiene el cercado en su sitio.
+		D3DXMatrixTranslation(&centrar, 30.3f, 0.0f, -0.7f);
+		D3DXMatrixScaling(&escala, 1.2f, 1.2f, 1.2f);
+		D3DXMatrixRotationY(&rotacion, atan2f(-(250.0f - 203.7f), 150.0f - 177.9f) + D3DX_PI);
+		D3DXMatrixTranslation(&ubicar, cementerioX - 30.3f, 0.0f, cementerioZ + 0.7f);
+		return centrar * escala * rotacion * ubicar;
+	}
+	bool CargarModeloOBJ(ModeloAssimp& modelo, std::vector<MPrimitives*>& partes,
+		const char* ruta, LPCWSTR texturaPorDefecto,
+		const std::map<std::string, std::wstring>& texturas)
+	{
+		if (!modelo.Cargar(ruta, texturas) || !modelo.Escena()->HasMeshes()) return false;
+		for (unsigned int i = 0; i < modelo.Escena()->mNumMeshes; ++i)
+		{
+			std::wstring textura = modelo.TexturaDifusa(i);
+			partes.push_back(new MPrimitives(d3d11Device, d3d11DevCon, modelo.Escena()->mMeshes[i],
+				textura.empty() ? texturaPorDefecto : textura.c_str()));
+		}
+		return true;
+	}
+
+	bool CargarModeloOBJ(ModeloAssimp& modelo, std::vector<MPrimitives*>& partes,
+		const char* ruta, LPCWSTR texturaPorDefecto)
+	{
+		return CargarModeloOBJ(modelo, partes, ruta, texturaPorDefecto, std::map<std::string, std::wstring>());
+	}
 	DXRender()
 	{
 		rotPerFrame = 0.0f;
@@ -505,16 +546,54 @@ public:
 		gato = new MPrimitives(d3d11Device, d3d11DevCon, "Models/gato.txt", L"Texturas/gatoColor.png", L"", ShaderDiffuse);
 		tumba = new MPrimitives(d3d11Device, d3d11DevCon, "Models/tumba.txt", L"Texturas/tumbaColor.png", L"", ShaderDiffuse);
 		tree2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/tree2.txt", L"Texturas/tree2Color.png", L"", ShaderDiffuse);
-		ataud = new MPrimitives(d3d11Device, d3d11DevCon, "Models/ataud.txt", L"Texturas/ataudColor.png", L"", ShaderDiffuse);
-		calaca = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca.txt", L"Texturas/calacaColor.png", L"", ShaderDiffuse);
-		if (modeloPruebaAnimaciones.Cargar("Models/Animados/calacaIdleyRun.fbx", true) && modeloPruebaAnimaciones.Escena()->HasMeshes())
-			calacaIdle = new MPrimitives(d3d11Device, d3d11DevCon, modeloPruebaAnimaciones.Escena()->mMeshes[0], L"Texturas/calacaColor.png");
-		// Alinea las UV del FBX con la textura y sus recortes entre costillas.
-		if (modeloPruebaSegundoClip.Cargar("Models/Animados/calacaIdleyRun.fbx", true) &&
-			modeloPruebaSegundoClip.Escena()->HasMeshes() && modeloPruebaSegundoClip.Escena()->mNumAnimations >= 2)
-			calacaIdleFbx = new MPrimitives(d3d11Device, d3d11DevCon, modeloPruebaSegundoClip.Escena()->mMeshes[0], L"Texturas/calacaColor.png");
+		calacasAnimadas = modeloCalacaAnimada.Cargar("Models/Animados/calacaIdleyRun.fbx", true) &&
+			modeloCalacaAnimada.Escena()->HasMeshes() && modeloCalacaAnimada.Escena()->mNumAnimations >= 2;
+		if (calacasAnimadas)
+			calaca = new MPrimitives(d3d11Device, d3d11DevCon, modeloCalacaAnimada.Escena()->mMeshes[0], L"Texturas/calacaColor.png");
+		else
+			calaca = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca.txt", L"Texturas/calacaColor.png", L"", ShaderDiffuse);
 		calaca2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca2.txt", L"Texturas/calaca2Color.png", L"", ShaderDiffuse);
 		castillo = new MPrimitives(d3d11Device, d3d11DevCon, "Models/castillo.txt", L"Texturas/castilloColor.png", L"", ShaderDiffuse);
+		CargarModeloOBJ(modeloGradas, gradasOBJ, "Models/OBJ/Gradas.obj", L"Models/OBJ/gradas.jpg");
+		const LPCWSTR publicoTexturas[5] = { L"Texturas/billboards/gatovoid.png", L"Texturas/billboards/gatovoid2.png", L"Texturas/billboards/gatovoid3.png", L"Texturas/billboards/leopardovoid.png", L"Texturas/billboards/perrovoid.png" };
+		const float publicoAnchos[5] = { 1.23f, 1.09f, 1.20f, 1.18f, 1.74f };
+		for (int i = 0; i < 5; ++i)
+			publicoGradas[i] = new MPrimitives(d3d11Device, d3d11DevCon, 1.5f, publicoAnchos[i], publicoTexturas[i], ShaderGUI);
+		CargarModeloOBJ(modeloBanderaInicio, banderaInicioOBJ, "Models/OBJ/Inicio Bandera.obj", L"Models/OBJ/bandera.png");
+		CargarModeloOBJ(modeloCementerio, cementerioOBJ, "Models/OBJ/Cementerio/Cementerio.obj", L"");
+		if (modeloCementerio.Escena())
+		{
+			const aiScene* escena = modeloCementerio.Escena();
+			D3DXMATRIX transformacion = TransformacionCementerio();
+			for (unsigned int i = 0; i < escena->mNumMeshes; ++i)
+			{
+				const aiMesh* malla = escena->mMeshes[i];
+				std::string nombre = malla->mName.C_Str();
+				bool arbol = nombre.find("Tree") == 0;
+				if (!arbol && nombre.find("Fence") != 0 && nombre.find("Metal") != 0 &&
+					nombre.find("Stone") != 0 && nombre.find("Coffin") != 0 &&
+					nombre.find("tomb_marker") != 0 && nombre.find("Gravestone") != 0 &&
+					nombre.find("Casket") != 0 && nombre.find("Cross") != 0) continue;
+				if (!malla->mNumVertices) continue;
+				D3DXVECTOR3 vertice(malla->mVertices[0].x, malla->mVertices[0].y, malla->mVertices[0].z);
+				D3DXVec3TransformCoord(&vertice, &vertice, &transformacion);
+				float minX = vertice.x, maxX = minX;
+				float minZ = vertice.z, maxZ = minZ;
+				for (unsigned int v = 1; v < malla->mNumVertices; ++v)
+				{
+					vertice = D3DXVECTOR3(malla->mVertices[v].x, malla->mVertices[v].y, malla->mVertices[v].z);
+					D3DXVec3TransformCoord(&vertice, &vertice, &transformacion);
+					minX = (std::min)(minX, vertice.x); maxX = (std::max)(maxX, vertice.x);
+					minZ = (std::min)(minZ, vertice.z); maxZ = (std::max)(maxZ, vertice.z);
+				}
+				if (arbol)
+				{
+					float x = (minX + maxX) * 0.5f, z = (minZ + maxZ) * 0.5f;
+					minX = x - 0.48f; maxX = x + 0.48f; minZ = z - 0.48f; maxZ = z + 0.48f;
+				}
+				colisionesCementerio.push_back({ minX, maxX, minZ, maxZ });
+			}
+		}
 		arbolmuerto1 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/arbolmuerto1.txt", L"Texturas/arbolmuerto1Color.jpg", L"", ShaderDiffuse);
 		arbolmuerto2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/arbolmuerto2.txt", L"Texturas/arbolmuerto2Color.jpg", L"", ShaderDiffuse);
 
@@ -908,6 +987,9 @@ public:
 		}
 
 		showColliders = (keyboardState[DIK_C] != 0);
+		bool f4Down = (keyboardState[DIK_F4] != 0);
+		if (f4Down && !f4Last) mostrarCoordenadas = !mostrarCoordenadas;
+		f4Last = f4Down;
 
 		// Tab (o Back en el control) oculta o muestra la tabla de stats
 		bool tabDown = (keyboardState[DIK_TAB] != 0) || padBack;
@@ -1740,6 +1822,23 @@ public:
 		DibujarContadorAlmas();
 		DibujarBanner();
 		DibujarConsumoAlmas();
+		if (mostrarCoordenadas)
+		{
+			D3DXVECTOR3 posicion = modoCamara ? camara->Position : playerPos;
+			wchar_t texto[128];
+			swprintf_s(texto, L"%s  X: %.1f  Y: %.1f  Z: %.1f", modoCamara ? L"Camara" : L"Jugador", posicion.x, posicion.y, posicion.z);
+			if (coordenadasDibujadas != texto)
+			{
+				GenerarTextoBGRA(texto, 700, 60, 28, 255, 255, 255, coordenadasPixeles);
+				hudCoordenadas->SetTextureFromPixels(700, 60, coordenadasPixeles.data());
+				coordenadasDibujadas = texto;
+			}
+			d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+			d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+			hudCoordenadas->DrawHUD((hudScreenW - 700.0f) * 0.5f, hudScreenH - 90.0f, 700.0f, 60.0f, hudScreenW, hudScreenH);
+			d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+			d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+		}
 	}
 
 	// Aviso grande al empezar cada dia: titulo y subtitulo sobre un fondo
@@ -2268,6 +2367,7 @@ public:
 		marcadorEntUsado = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		hudFlecha = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudPanel = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
+		hudCoordenadas = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		for (int i = 0; i < 4; i++)
 			hudQte[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudQteBarra = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
@@ -2313,8 +2413,11 @@ public:
 		// Diamante verde de la calaca del jugador y calacas rivales
 		diamanteJugador = new MPrimitives(d3d11Device, d3d11DevCon, L"", ShaderDiffuse);
 		for (int i = 0; i < 4; i++)
-			calacasIA[i].modelo = new MPrimitives(d3d11Device, d3d11DevCon,
-				"Models/calaca.txt", L"Texturas/calacaColor.png", L"", ShaderDiffuse);
+			if (calacasAnimadas)
+				calacasIA[i].modelo = new MPrimitives(d3d11Device, d3d11DevCon, modeloCalacaAnimada.Escena()->mMeshes[0], L"Texturas/calacaColor.png");
+			else
+				calacasIA[i].modelo = new MPrimitives(d3d11Device, d3d11DevCon,
+					"Models/calaca.txt", L"Texturas/calacaColor.png", L"", ShaderDiffuse);
 
 		const wchar_t* nombresIA[4] = {
 			L"Calaca Elite", L"Calaca Experimentada",
@@ -2380,6 +2483,9 @@ public:
 		colliders[6] = { 165.0f, 170.0f, 1.5f };  // calaca2
 		colliders[7] = { 45.0f, 45.0f, 1.0f };    // arbolmuerto1
 		colliders[8] = { 70.0f, 30.0f, 1.0f };    // arbolmuerto2
+		castleWalls[20] = { 146.7667f, 151.0f, 203.8f, 226.4f }; // gradas escaladas
+		castleWalls[21] = { 113.6f, 136.2f, 116.7666f, 121.0f };
+		castleWalls[22] = { 136.2f, 158.8f, 116.7666f, 121.0f };
 		// Paredes del castillo (modelo 63 x 40 en el mundo, X 118-182, Z 230-270)
 		// Puerta en la pared sur, hueco de X 147 a 153
 		// Paredes exteriores
@@ -2515,21 +2621,16 @@ public:
 		float yTree2 = terreno->getTerrainCollision(xzTree2) + 0.05f;
 		D3DXMatrixTranslation(&lugarTree2, xzTree2.x, yTree2, xzTree2.y);
 
-		D3DXMATRIX escalaAtaud, lugarAtaud;
-		D3DXMatrixScaling(&escalaAtaud, 0.75f, 0.75f, 0.75f);
-		D3DXVECTOR2 xzAtaud(150.0f, 205.0f);
-		float yAtaud = terreno->getTerrainCollision(xzAtaud) + 1.0f * 0.75f + 0.05f;
-		D3DXMatrixTranslation(&lugarAtaud, xzAtaud.x, yAtaud, xzAtaud.y);
-
 		D3DXMATRIX escalaCalaca, lugarCalaca, rotCalaca;
-		D3DXMatrixScaling(&escalaCalaca, 2.0f, 2.0f, 2.0f);
+		float escalaModeloCalaca = calacasAnimadas ? 0.014f : 2.0f;
+		D3DXMatrixScaling(&escalaCalaca, escalaModeloCalaca, escalaModeloCalaca, escalaModeloCalaca);
 		// En la carrera automatica la calaca mira hacia donde corre (la camara puede
 		// estar en cualquier lado); el resto del tiempo mira hacia donde apunta la vista.
-		D3DXMatrixRotationY(&rotCalaca, (autoCorriendo ? yawCalaca : camara->Yaw) + D3DX_PI);
+		D3DXMatrixRotationY(&rotCalaca, (autoCorriendo ? yawCalaca : camara->Yaw) + (calacasAnimadas ? 0.0f : D3DX_PI));
 
 		// Pequeño rebote para que se note que va corriendo
 		float reboteCalaca = 0.0f;
-		if (autoCorriendo)
+		if (autoCorriendo && !calacasAnimadas)
 			reboteCalaca = fabsf(sinf(g_Time * 60.0f)) * 0.4f;
 
 		D3DXMatrixTranslation(&lugarCalaca, playerPos.x, playerPos.y + 0.05f + reboteCalaca, playerPos.z);
@@ -2572,31 +2673,24 @@ public:
 		gato->UpdateScene(escalaGato * lugarGato);
 		tumba->UpdateScene(escalaTumba * lugarTumba);
 		tree2->UpdateScene(escalaTree2 * lugarTree2);
-		ataud->UpdateScene(escalaAtaud * lugarAtaud);
 		calaca->UpdateScene(escalaCalaca * rotCalaca * lugarCalaca);
 		calaca2->UpdateScene(escalaCalaca2 * lugarCalaca2);
-		if (menuEstado == 0) tiempoIdle += deltaTime;
-		if (calacaIdle)
+		if (calacasAnimadas)
 		{
-			std::vector<aiVector3D> posiciones, normales;
-			modeloPruebaAnimaciones.Animar(tiempoIdle, posiciones, normales);
-			calacaIdle->ActualizarMallaAnimada(modeloPruebaAnimaciones.Escena()->mMeshes[0], posiciones, normales);
-			D3DXMATRIX escala, lugar;
-			D3DXMatrixScaling(&escala, 0.014f, 0.014f, 0.014f);
-			D3DXVECTOR2 posicion(155.0f, 200.0f);
-			D3DXMatrixTranslation(&lugar, posicion.x, terreno->getTerrainCollision(posicion), posicion.y);
-			calacaIdle->UpdateScene(escala * lugar);
-		}
-		if (calacaIdleFbx)
-		{
-			std::vector<aiVector3D> posiciones, normales;
-			modeloPruebaSegundoClip.Animar(tiempoIdle, posiciones, normales, 1);
-			calacaIdleFbx->ActualizarMallaAnimada(modeloPruebaSegundoClip.Escena()->mMeshes[0], posiciones, normales);
-			D3DXMATRIX escala, lugar;
-			D3DXMatrixScaling(&escala, 0.014f, 0.014f, 0.014f);
-			D3DXVECTOR2 posicion(155.0f, 205.0f);
-			D3DXMatrixTranslation(&lugar, posicion.x, terreno->getTerrainCollision(posicion), posicion.y);
-			calacaIdleFbx->UpdateScene(escala * lugar);
+			float dx = playerPos.x - posicionJugadorAnterior.x;
+			float dz = playerPos.z - posicionJugadorAnterior.z;
+			int clip = menuEstado == 0 ? (dx * dx + dz * dz > 0.000001f ? 1 : 0) : clipJugador;
+			posicionJugadorAnterior = playerPos;
+			if (clip != clipJugador) { clipJugador = clip; tiempoAnimacionJugador = 0.0; fotogramaJugador = -1; }
+			if (menuEstado == 0) tiempoAnimacionJugador += deltaTime;
+			int fotograma = (int)(tiempoAnimacionJugador * 60.0);
+			if (fotograma != fotogramaJugador)
+			{
+				fotogramaJugador = fotograma;
+				std::vector<aiVector3D> posiciones, normales;
+				modeloCalacaAnimada.Animar(tiempoAnimacionJugador, posiciones, normales, clipJugador);
+				calaca->ActualizarMallaAnimada(modeloCalacaAnimada.Escena()->mMeshes[0], posiciones, normales);
+			}
 		}
 		castillo->UpdateScene(escalaCastillo * lugarCastillo);
 		arbolmuerto1->UpdateScene(escalaAm1 * lugarAm1);
@@ -2637,6 +2731,7 @@ public:
 			// Colisiones con objetos (circulos en XZ)
 			for (int i = 0; i < 9; i++)
 			{
+				if (i == 5) continue;
 				float dx = playerPos.x - colliders[i].x;
 				float dz = playerPos.z - colliders[i].z;
 				float dist = sqrtf(dx * dx + dz * dz);
@@ -2649,12 +2744,14 @@ public:
 			}
 
 			// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
-			for (int i = 0; i < 20; i++)
+			for (size_t i = 0; i < 23 + colisionesCementerio.size(); i++)
 			{
-				float minX = castleWalls[i].minX - playerRadius;
-				float maxX = castleWalls[i].maxX + playerRadius;
-				float minZ = castleWalls[i].minZ - playerRadius;
-				float maxZ = castleWalls[i].maxZ + playerRadius;
+				if (i == 20) continue;
+				const BoxCollider& caja = i < 23 ? castleWalls[i] : colisionesCementerio[i - 23];
+				float minX = caja.minX - playerRadius;
+				float maxX = caja.maxX + playerRadius;
+				float minZ = caja.minZ - playerRadius;
+				float maxZ = caja.maxZ + playerRadius;
 				float px = playerPos.x;
 				float pz = playerPos.z;
 				if (px > minX && px < maxX && pz > minZ && pz < maxZ)
@@ -2718,9 +2815,6 @@ public:
 		gato->DrawScene(camara);
 		tumba->DrawScene(camara);
 		tree2->DrawScene(camara);
-		ataud->DrawScene(camara);
-		if (calacaIdle) calacaIdle->DrawScene(camara);
-		if (calacaIdleFbx) calacaIdleFbx->DrawScene(camara);
 		if (thirdPerson)
 		{
 			calaca->DrawScene(camara);
@@ -2749,21 +2843,80 @@ public:
 			for (int i = 0; i < 4; i++)
 			{
 				D3DXMATRIX escalaIA, rotIA, lugarIA;
-				D3DXMatrixScaling(&escalaIA, 2.0f, 2.0f, 2.0f);
+				float escalaRival = calacasAnimadas ? 0.014f : 2.0f;
+				D3DXMatrixScaling(&escalaIA, escalaRival, escalaRival, escalaRival);
 
 				float reboteIA = 0.0f;
-				if (estadoCarrera == CarreraCorriendo && !calacasIA[i].terminado)
+				if (!calacasAnimadas && estadoCarrera == CarreraCorriendo && !calacasIA[i].terminado)
 					reboteIA = fabsf(sinf(g_Time * 60.0f + i * 1.7f)) * 0.4f;
 
-				D3DXMatrixRotationY(&rotIA, calacasIA[i].yaw + D3DX_PI);
+				D3DXMatrixRotationY(&rotIA, calacasIA[i].yaw + (calacasAnimadas ? 0.0f : D3DX_PI));
 				D3DXMatrixTranslation(&lugarIA, calacasIA[i].pos.x,
 					calacasIA[i].pos.y + 0.05f + reboteIA, calacasIA[i].pos.z);
 
+				if (calacasAnimadas)
+				{
+					int clip = (estadoCarrera == CarreraCorriendo && !calacasIA[i].terminado && calacasIA[i].velocidadActual > 0.01f) ? 1 : 0;
+					if (clip != calacasIA[i].clipAnimacion) { calacasIA[i].clipAnimacion = clip; calacasIA[i].tiempoAnimacion = 0.0; calacasIA[i].fotogramaAnimacion = -1; }
+					if (menuEstado == 0) calacasIA[i].tiempoAnimacion += deltaTime;
+					int fotograma = (int)(calacasIA[i].tiempoAnimacion * 60.0);
+					if (fotograma != calacasIA[i].fotogramaAnimacion)
+					{
+						calacasIA[i].fotogramaAnimacion = fotograma;
+						std::vector<aiVector3D> posiciones, normales;
+						modeloCalacaAnimada.Animar(calacasIA[i].tiempoAnimacion, posiciones, normales, calacasIA[i].clipAnimacion);
+						calacasIA[i].modelo->ActualizarMallaAnimada(modeloCalacaAnimada.Escena()->mMeshes[0], posiciones, normales);
+					}
+				}
 				calacasIA[i].modelo->UpdateScene(escalaIA * rotIA * lugarIA);
 				calacasIA[i].modelo->DrawScene(camara);
 			}
 		}
 		castillo->DrawScene(camara);
+		{
+			D3DXVECTOR2 posicion(cementerioX - 30.3f, cementerioZ + 0.7f);
+			D3DXMATRIX lugar;
+			D3DXMatrixTranslation(&lugar, 0.0f, terreno->getTerrainCollision(posicion), 0.0f);
+			for (size_t i = 0; i < cementerioOBJ.size(); ++i)
+			{
+				cementerioOBJ[i]->UpdateScene(TransformacionCementerio() * lugar);
+				cementerioOBJ[i]->DrawScene(camara);
+			}
+		}
+		{
+			D3DXMATRIX lugar, escala;
+			D3DXMatrixScaling(&escala, 2.0f, 2.0f, 2.0f);
+			D3DXVECTOR2 posicion;
+			for (int grada = 0; grada < 2; ++grada)
+			{
+				D3DXVECTOR2 ubicacion(120.0f + grada * 22.6f, 120.0f);
+				D3DXMATRIX rotacion;
+				D3DXMatrixRotationY(&rotacion, -D3DX_PI * 0.5f);
+				D3DXMatrixTranslation(&lugar, ubicacion.x, terreno->getTerrainCollision(ubicacion), ubicacion.y);
+				for (size_t i = 0; i < gradasOBJ.size(); ++i) { gradasOBJ[i]->UpdateScene(escala * rotacion * lugar); gradasOBJ[i]->DrawScene(camara); }
+				const float filasX[3] = { 0.1f, -0.5f, -1.1f };
+				const float filasY[3] = { 0.43f, 0.85f, 1.27f };
+				const float asientosZ[8] = { -7.3f, -6.1f, -4.9f, -3.7f, -1.3f, -0.1f, 1.1f, 2.3f };
+				D3DXMATRIX transformacion = escala * rotacion * lugar;
+				for (int fila = 0; fila < 3; ++fila)
+				for (int asientoIndice = 0; asientoIndice < 8; ++asientoIndice)
+				{
+					int personaje = (asientoIndice + fila * 2 + grada * 3) % 5;
+					D3DXVECTOR3 asiento(filasX[fila], filasY[fila], asientosZ[asientoIndice]), mundo;
+					D3DXVec3TransformCoord(&mundo, &asiento, &transformacion);
+					D3DXMATRIX posicionPersonaje;
+					D3DXMatrixTranslation(&posicionPersonaje, mundo.x, mundo.y + 0.75f, mundo.z);
+					publicoGradas[personaje]->UpdateScene(posicionPersonaje);
+					publicoGradas[personaje]->DrawScene(camara);
+				}
+			}
+			if (!puntosRuta.empty())
+			{
+				posicion = puntosRuta[0];
+				D3DXMatrixTranslation(&lugar, posicion.x - 3.0f, terreno->getTerrainCollision(D3DXVECTOR2(posicion.x - 3.0f, posicion.y)) + 5.5f, posicion.y);
+				for (size_t i = 0; i < banderaInicioOBJ.size(); ++i) { banderaInicioOBJ[i]->UpdateScene(escala * lugar); banderaInicioOBJ[i]->DrawScene(camara); }
+			}
+		}
 		arbolmuerto1->DrawScene(camara);
 		arbolmuerto2->DrawScene(camara);
 		for (int i = 0; i < 150; i++)
@@ -2780,12 +2933,14 @@ public:
 		// Debug de colisiones: mantener C presionada para verlas en rojo
 		if (showColliders)
 		{
-			for (int i = 0; i < 20; i++)
+			for (size_t i = 0; i < 23 + colisionesCementerio.size(); i++)
 			{
-				float cx = (castleWalls[i].minX + castleWalls[i].maxX) * 0.5f;
-				float cz = (castleWalls[i].minZ + castleWalls[i].maxZ) * 0.5f;
-				float w = castleWalls[i].maxX - castleWalls[i].minX;
-				float d = castleWalls[i].maxZ - castleWalls[i].minZ;
+				if (i == 20) continue;
+				const BoxCollider& caja = i < 23 ? castleWalls[i] : colisionesCementerio[i - 23];
+				float cx = (caja.minX + caja.maxX) * 0.5f;
+				float cz = (caja.minZ + caja.maxZ) * 0.5f;
+				float w = caja.maxX - caja.minX;
+				float d = caja.maxZ - caja.minZ;
 				float y = terreno->getTerrainCollision(D3DXVECTOR2(cx, cz)) + 1.0f;
 				D3DXMATRIX s, t;
 				D3DXMatrixScaling(&s, w, 2.0f, d);
@@ -2795,6 +2950,7 @@ public:
 			}
 			for (int i = 0; i < 9; i++)
 			{
+				if (i == 5) continue;
 				float cx = colliders[i].x;
 				float cz = colliders[i].z;
 				float r = colliders[i].radius + playerRadius;

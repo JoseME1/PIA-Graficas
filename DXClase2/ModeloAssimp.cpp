@@ -4,6 +4,8 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <windows.h>
+#include <assimp/material.h>
 
 namespace {
 aiVector3D VectorEnTiempo(const aiVectorKey* claves, unsigned int cantidad, double tiempo, const aiVector3D& defecto)
@@ -38,7 +40,17 @@ void ModeloAssimp::Animar(double segundos, std::vector<aiVector3D>& posiciones, 
 	const aiMesh* mesh = escena->mMeshes[0];
 	const aiAnimation* animacion = escena->mAnimations[indice];
 	if (animacion->mDuration <= 0.0) return;
-	double tiempo = fmod(segundos * (animacion->mTicksPerSecond > 0.0 ? animacion->mTicksPerSecond : 25.0), animacion->mDuration);
+	double ticksPorSegundo = animacion->mTicksPerSecond > 0.0 ? animacion->mTicksPerSecond : 25.0;
+	double segundosCiclo = animacion->mDuration / ticksPorSegundo;
+	unsigned int fotograma = (unsigned int)(fmod(segundos, segundosCiclo) * 60.0);
+	auto clave = std::make_pair(indice, fotograma);
+	auto guardada = poses.find(clave);
+	if (guardada != poses.end()) {
+		posiciones = guardada->second.posiciones;
+		normales = guardada->second.normales;
+		return;
+	}
+	double tiempo = (fotograma / 60.0) * ticksPorSegundo;
 	std::map<std::string, const aiNodeAnim*> canales;
 	for (unsigned int i = 0; i < animacion->mNumChannels; ++i)
 		canales[animacion->mChannels[i]->mNodeName.C_Str()] = animacion->mChannels[i];
@@ -98,17 +110,25 @@ void ModeloAssimp::Animar(double segundos, std::vector<aiVector3D>& posiciones, 
 		if (pesos[i] > 0.0f) { posiciones[i] /= pesos[i]; normales[i].NormalizeSafe(); }
 		else { posiciones[i] = transformacionMalla * mesh->mVertices[i]; if (mesh->HasNormals()) normales[i] = normalMalla * mesh->mNormals[i]; }
 	}
+	if (poses.size() >= 700) poses.erase(poses.begin());
+	poses[clave] = { posiciones, normales };
 }
 
 bool ModeloAssimp::Cargar(const char* ruta, bool invertirUV)
 {
 	escena = nullptr;
+	poses.clear();
 	error.clear();
+	texturasPorMaterial.clear();
+	directorio.clear();
 	if (!ruta || !ruta[0])
 	{
 		error = "Ruta de modelo vacia";
 		return false;
 	}
+	std::string archivo(ruta);
+	std::string::size_type separador = archivo.find_last_of("/\\");
+	if (separador != std::string::npos) directorio = archivo.substr(0, separador + 1);
 
 	unsigned int pasos = aiProcess_Triangulate | aiProcess_GenSmoothNormals;
 	if (invertirUV) pasos |= aiProcess_FlipUVs;
@@ -121,4 +141,34 @@ bool ModeloAssimp::Cargar(const char* ruta, bool invertirUV)
 		return false;
 	}
 	return true;
+}
+
+bool ModeloAssimp::Cargar(const char* ruta, const std::map<std::string, std::wstring>& texturas, bool invertirUV)
+{
+	if (!Cargar(ruta, invertirUV)) return false;
+	texturasPorMaterial = texturas;
+	return true;
+}
+
+std::wstring ModeloAssimp::TexturaDifusa(unsigned int indiceMalla) const
+{
+	if (!escena || indiceMalla >= escena->mNumMeshes) return L"";
+	unsigned int indiceMaterial = escena->mMeshes[indiceMalla]->mMaterialIndex;
+	if (indiceMaterial >= escena->mNumMaterials) return L"";
+	const aiMaterial* material = escena->mMaterials[indiceMaterial];
+	aiString nombre;
+	if (material->Get(AI_MATKEY_NAME, nombre) == AI_SUCCESS)
+	{
+		auto it = texturasPorMaterial.find(nombre.C_Str());
+		if (it != texturasPorMaterial.end()) return it->second;
+	}
+	aiString textura;
+	if (material->GetTexture(aiTextureType_DIFFUSE, 0, &textura) != AI_SUCCESS || textura.length == 0 || textura.C_Str()[0] == '*') return L"";
+	std::string ruta = textura.C_Str();
+	if (!(ruta.size() > 1 && ruta[1] == ':') && ruta[0] != '/' && ruta[0] != '\\') ruta = directorio + ruta;
+	int longitud = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, ruta.c_str(), -1, NULL, 0);
+	if (!longitud) return L"";
+	std::vector<wchar_t> resultado(longitud);
+	if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, ruta.c_str(), -1, resultado.data(), longitud)) return L"";
+	return std::wstring(resultado.data());
 }
