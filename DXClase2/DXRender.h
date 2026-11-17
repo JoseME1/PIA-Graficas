@@ -285,10 +285,9 @@ private:
 	};
 	std::vector<PuntoEntrenamiento> puntosEntrenamiento;
 	float radioEntrenamiento = 6.0f;
-	MPrimitives* marcadorEntVel = nullptr;		// cian, como la barra de velocidad
-	MPrimitives* marcadorEntAcel = nullptr;		// naranja, como la de aceleracion
-	MPrimitives* marcadorEntRes = nullptr;		// verde, como la de resistencia
-	MPrimitives* marcadorEntUsado = nullptr;	// gris, ya usado en esta hora
+	ModeloAssimp modelosEntrenamiento[3];
+	std::vector<MPrimitives*> objetosEntrenamiento[3];
+	D3DXVECTOR3 centroEntrenamiento[3];
 
 	// Calendario: 2 dias de entrenamiento y el tercero es la carrera.
 	// slot: 0 = mañana, 1 = dia, 2 = tarde, 3 = noche
@@ -568,6 +567,24 @@ public:
 		calaca2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca2.txt", L"Texturas/calaca2Color.png", L"", ShaderDiffuse);
 		castillo = new MPrimitives(d3d11Device, d3d11DevCon, "Models/castillo.txt", L"Texturas/castilloColor.png", L"", ShaderDiffuse);
 		CargarModeloOBJ(modeloGradas, gradasOBJ, "Models/OBJ/Gradas.obj", L"Models/OBJ/gradas.jpg");
+		// Orden: velocidad (corredora), aceleracion (banca), resistencia (barra).
+		const char* archivosEntrenamiento[3] = { "Models/OBJ/Corredora.obj", "Models/OBJ/Mancueras y Banca.obj", "Models/OBJ/Barra.obj" };
+		for (int tipo = 0; tipo < 3; ++tipo)
+		{
+			centroEntrenamiento[tipo] = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
+			if (!CargarModeloOBJ(modelosEntrenamiento[tipo], objetosEntrenamiento[tipo], archivosEntrenamiento[tipo], L"Models/OBJ/gradas.jpg")) continue;
+			const aiScene* escena = modelosEntrenamiento[tipo].Escena();
+			float minX = FLT_MAX, maxX = -FLT_MAX, minY = FLT_MAX, minZ = FLT_MAX, maxZ = -FLT_MAX;
+			for (unsigned int m = 0; m < escena->mNumMeshes; ++m)
+				for (unsigned int v = 0; v < escena->mMeshes[m]->mNumVertices; ++v)
+				{
+					const aiVector3D& p = escena->mMeshes[m]->mVertices[v];
+					minX = (std::min)(minX, p.x); maxX = (std::max)(maxX, p.x);
+					minY = (std::min)(minY, p.y);
+					minZ = (std::min)(minZ, p.z); maxZ = (std::max)(maxZ, p.z);
+				}
+			centroEntrenamiento[tipo] = D3DXVECTOR3((minX + maxX) * 0.5f, minY, (minZ + maxZ) * 0.5f);
+		}
 		const LPCWSTR publicoTexturas[5] = { L"Texturas/billboards/gatovoid.png", L"Texturas/billboards/gatovoid2.png", L"Texturas/billboards/gatovoid3.png", L"Texturas/billboards/leopardovoid.png", L"Texturas/billboards/perrovoid.png" };
 		const float publicoAnchos[5] = { 1.23f, 1.09f, 1.20f, 1.18f, 1.74f };
 		for (int i = 0; i < 5; ++i)
@@ -2190,34 +2207,23 @@ public:
 	// Los entrenamientos conservan sus anillos y el circuito usa banderines.
 	void DibujarMarcadores()
 	{
-		// Puntos de entrenamiento: color segun la barra del HUD, gris si ya se uso en esta hora.
-		// El dia de la carrera ya no se muestran.
-		for (size_t i = 0; diaActual < 3 && i < puntosEntrenamiento.size(); i++)
+		// Los puntos de entrenamiento conservan su posicion y radio de interaccion.
+		for (size_t i = 0; diaActual < 3 && i < puntosEntrenamiento.size(); ++i)
 		{
-			bool usado = puntosEntrenamiento[i].usadoSlot;
-			MPrimitives* anillo = marcadorEntUsado;
-			if (!usado)
+			int tipo = puntosEntrenamiento[i].tipo;
+			if (tipo < 0 || tipo >= 3) continue;
+			const D3DXVECTOR3& centro = centroEntrenamiento[tipo];
+			D3DXMATRIX centrar, escala, lugar;
+			D3DXMatrixTranslation(&centrar, -centro.x, -centro.y, -centro.z);
+			D3DXMatrixScaling(&escala, 2.0f, 2.0f, 2.0f);
+			D3DXVECTOR2 posicion = puntosEntrenamiento[i].pos;
+			D3DXMatrixTranslation(&lugar, posicion.x, terreno->getTerrainCollision(posicion), posicion.y);
+			for (size_t parte = 0; parte < objetosEntrenamiento[tipo].size(); ++parte)
 			{
-				if (puntosEntrenamiento[i].tipo == 0)		anillo = marcadorEntVel;
-				else if (puntosEntrenamiento[i].tipo == 1)	anillo = marcadorEntAcel;
-				else										anillo = marcadorEntRes;
+				objetosEntrenamiento[tipo][parte]->UpdateScene(centrar * escala * lugar);
+				objetosEntrenamiento[tipo][parte]->DrawScene(camara);
 			}
-
-			float radio = radioEntrenamiento;
-			if (!usado)
-				radio *= (1.0f + 0.06f * sinf(g_Time * 6.0f));	// late para llamar la atencion
-
-			float y = terreno->getTerrainCollision(puntosEntrenamiento[i].pos) + alturaMarcador;
-
-			D3DXMATRIX escala, rotX, traslacion;
-			D3DXMatrixScaling(&escala, radio, radio, radio);
-			D3DXMatrixRotationX(&rotX, -D3DX_PI * 0.5f);
-			D3DXMatrixTranslation(&traslacion, puntosEntrenamiento[i].pos.x, y, puntosEntrenamiento[i].pos.y);
-
-			anillo->UpdateScene(escala * rotX * traslacion);
-			anillo->DrawScene(camara);
 		}
-
 		if (puntosRuta.empty())
 			return;
 
@@ -2386,10 +2392,6 @@ public:
 
 		// Marcadores del circuito: anillos de color plano en el suelo.
 		// El toro se crea con radio 1 y se escala al radio real de cada punto.
-		marcadorEntVel = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
-		marcadorEntAcel = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
-		marcadorEntRes = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
-		marcadorEntUsado = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		hudFlecha = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudPanel = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudCoordenadas = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
@@ -2462,11 +2464,6 @@ public:
 			calacasIA[i].tiempoLlegada = 0.0f;
 			calacasIA[i].yaw = 0.0f;
 		}
-
-		ColorPlano(marcadorEntVel, 80, 200, 255);	// cian: velocidad
-		ColorPlano(marcadorEntAcel, 255, 170, 60);	// naranja: aceleracion
-		ColorPlano(marcadorEntRes, 80, 230, 110);	// verde: resistencia
-		ColorPlano(marcadorEntUsado, 90, 90, 90);	// gris: ya usado en esta hora
 		ColorPlano(hudQteBarra, 255, 210, 70);		// amarillo: tiempo restante
 		ColorPlano(hudQteBarraFondo, 40, 45, 60);	// pista oscura
 		ColorPlano(hudBannerFondo, 15, 18, 28, 170);	// fondo semitransparente del aviso

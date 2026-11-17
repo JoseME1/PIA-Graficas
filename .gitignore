@@ -4,6 +4,7 @@ Release/
 x64/
 [Bb]in/
 [Oo]bj/
+!/DXClase2/Models/OBJ/
 *.exe
 !Convertir modelos/Convertidor.exe
 *.ilk
