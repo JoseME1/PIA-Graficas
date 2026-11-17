@@ -63,3 +63,11 @@ float4 DibujarConNiebla(VS_OUTPUT input, float fogDensity)
 
 float4 PS(VS_OUTPUT input) : SV_TARGET { return DibujarConNiebla(input, 0.015f); }
 float4 PSFondo(VS_OUTPUT input) : SV_TARGET { return DibujarConNiebla(input, 0.003f); }
+
+// Un poco de emision para distinguir las almas durante la noche.
+float4 PSAlma(VS_OUTPUT input) : SV_TARGET
+{
+	float4 color = DibujarConNiebla(input, 0.015f);
+	color.rgb += ObjTexture.Sample(ObjSamplerState, input.TexCoord).rgb * 0.22f;
+	return color;
+}

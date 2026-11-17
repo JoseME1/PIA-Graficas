@@ -42,6 +42,7 @@ private:
 	MPrimitives *terreno;
 	ID3D11PixelShader* pixelTerrenoFondo = nullptr;
 	ID3D11PixelShader* pixelObjetosFondo = nullptr;
+	ID3D11PixelShader* pixelAlma = nullptr;
 	MPrimitives* agua;
 
 	//MIS MODELOS
@@ -288,6 +289,8 @@ private:
 	ModeloAssimp modelosEntrenamiento[3];
 	std::vector<MPrimitives*> objetosEntrenamiento[3];
 	D3DXVECTOR3 centroEntrenamiento[3];
+	D3DXVECTOR2 semiextensionEntrenamiento[3];
+	const float escalaEntrenamiento = 2.0f;
 
 	// Calendario: 2 dias de entrenamiento y el tercero es la carrera.
 	// slot: 0 = mañana, 1 = dia, 2 = tarde, 3 = noche
@@ -315,18 +318,18 @@ private:
 	float bannerTiempo = 0.0f;
 
 	// Fase de las almas de poder: al terminar el 4to entrenamiento de los dias
-	// 1 y 2 aparece un aviso y despues un minuto para juntar 5 almas repartidas
+	// 1 y 2 aparece un aviso y despues 30 segundos para juntar 5 almas repartidas
 	// por el mapa.
 	static const int almasTotal = 5;
 	bool faseAlmas = false;
-	float almasTiempo = 60.0f;
+	float almasTiempo = 30.0f;
 	int almasRecogidas = 0;
 	float radioAlma = 12.0f;	// radio de recogida (el aviso "Pulsa E" usa el mismo)
 	D3DXVECTOR3 almasPos[almasTotal];
 	bool almaDisponible[almasTotal];
 	bool tecla1Last = false, tecla2Last = false, tecla3Last = false;
 
-	// Menu "Consume el poder de las almas": al acabar el minuto el jugador
+	// Menu "Consume el poder de las almas": al acabar el tiempo el jugador
 	// reparte las almas que junto entre los stats (1/2/3).
 	bool consumiendoAlmas = false;
 	int almasConsumidas = 0;
@@ -572,7 +575,13 @@ public:
 		for (int tipo = 0; tipo < 3; ++tipo)
 		{
 			centroEntrenamiento[tipo] = D3DXVECTOR3(0.0f, 0.0f, 0.0f);
-			if (!CargarModeloOBJ(modelosEntrenamiento[tipo], objetosEntrenamiento[tipo], archivosEntrenamiento[tipo], L"Models/OBJ/gradas.jpg")) continue;
+			std::map<std::string, std::wstring> texturasEntrenamiento;
+			if (tipo == 0)
+			{
+				texturasEntrenamiento["lambert17SG"] = L"Models/OBJ/mansion/japanese_stone_wall_diff_2k.jpg";
+				texturasEntrenamiento["lambert18SG"] = L"Models/OBJ/mansion/japanese_stone_wall_diff_2k.jpg";
+			}
+			if (!CargarModeloOBJ(modelosEntrenamiento[tipo], objetosEntrenamiento[tipo], archivosEntrenamiento[tipo], tipo == 0 ? L"Models/OBJ/mansion/japanese_stone_wall_diff_2k.jpg" : L"Models/OBJ/gradas.jpg", texturasEntrenamiento)) continue;
 			const aiScene* escena = modelosEntrenamiento[tipo].Escena();
 			float minX = FLT_MAX, maxX = -FLT_MAX, minY = FLT_MAX, minZ = FLT_MAX, maxZ = -FLT_MAX;
 			for (unsigned int m = 0; m < escena->mNumMeshes; ++m)
@@ -584,6 +593,7 @@ public:
 					minZ = (std::min)(minZ, p.z); maxZ = (std::max)(maxZ, p.z);
 				}
 			centroEntrenamiento[tipo] = D3DXVECTOR3((minX + maxX) * 0.5f, minY, (minZ + maxZ) * 0.5f);
+			semiextensionEntrenamiento[tipo] = D3DXVECTOR2((maxX - minX) * escalaEntrenamiento * 0.5f, (maxZ - minZ) * escalaEntrenamiento * 0.5f);
 		}
 		const LPCWSTR publicoTexturas[5] = { L"Texturas/billboards/gatovoid.png", L"Texturas/billboards/gatovoid2.png", L"Texturas/billboards/gatovoid3.png", L"Texturas/billboards/leopardovoid.png", L"Texturas/billboards/perrovoid.png" };
 		const float publicoAnchos[5] = { 1.23f, 1.09f, 1.20f, 1.18f, 1.74f };
@@ -649,6 +659,8 @@ public:
 		d3d11Device->CreatePixelShader(shaderFondo->GetBufferPointer(), shaderFondo->GetBufferSize(), NULL, &pixelTerrenoFondo);
 		ID3D10Blob* shaderObjetosFondo = MPrimitives::CompileShaderCached(L"pixelShader.ps", "PSFondo", "ps_4_0");
 		d3d11Device->CreatePixelShader(shaderObjetosFondo->GetBufferPointer(), shaderObjetosFondo->GetBufferSize(), NULL, &pixelObjetosFondo);
+		ID3D10Blob* shaderAlma = MPrimitives::CompileShaderCached(L"pixelShader.ps", "PSAlma", "ps_4_0");
+		d3d11Device->CreatePixelShader(shaderAlma->GetBufferPointer(), shaderAlma->GetBufferSize(), NULL, &pixelAlma);
 		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
 		for (int i = 0; i < 150; i++)
 			pasto[i] = new MPrimitives(d3d11Device, d3d11DevCon,1.5f, 3.0f, L"Texturas/pasto.png", ShaderPasto);
@@ -1439,6 +1451,7 @@ public:
 		audio.Shutdown();
 		if (pixelTerrenoFondo) { pixelTerrenoFondo->Release(); pixelTerrenoFondo = nullptr; }
 		if (pixelObjetosFondo) { pixelObjetosFondo->Release(); pixelObjetosFondo = nullptr; }
+		if (pixelAlma) { pixelAlma->Release(); pixelAlma = nullptr; }
 		if (amanecerConAudio) { audioAmanecer.Shutdown(); amanecerConAudio = false; }
 		SwapChain->Release();
 		d3d11Device->Release();
@@ -1838,7 +1851,7 @@ public:
 
 			if (hudTexto != hudTextoDibujado || ancho != hudAnchoDibujado || alto != hudAltoDibujado)
 			{
-				GenerarTextoBGRA(hudTexto.c_str(), ancho, alto, fuente, 255, 255, 255, hudPixeles);
+				GenerarTextoBGRA(hudTexto.c_str(), ancho, alto, fuente, 255, 255, 255, hudPixeles, !grande && !modoRuta);
 				hudQuad->SetTextureFromPixels((UINT)ancho, (UINT)alto, hudPixeles.data());
 				hudTextoDibujado = hudTexto;
 				hudAnchoDibujado = ancho;
@@ -1848,8 +1861,8 @@ public:
 			d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
 			d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
 
-			float x = (hudScreenW - ancho) * 0.5f;
-			float y = grande ? (hudScreenH - alto) * 0.35f : hudScreenH * hudY;
+			float x = (grande || modoRuta) ? (hudScreenW - ancho) * 0.5f : 30.0f;
+			float y = grande ? (hudScreenH - alto) * 0.35f : (modoRuta ? hudScreenH * hudY : 110.0f);
 			hudQuad->DrawHUD(x, y, (float)ancho, (float)alto, hudScreenW, hudScreenH);
 
 			d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
@@ -2205,6 +2218,16 @@ public:
 	}
 
 	// Los entrenamientos conservan sus anillos y el circuito usa banderines.
+	bool CajaEntrenamiento(size_t indice, BoxCollider& caja) const
+	{
+		if (diaActual >= 3 || indice >= puntosEntrenamiento.size()) return false;
+		const PuntoEntrenamiento& punto = puntosEntrenamiento[indice];
+		if (punto.tipo < 0 || punto.tipo >= 3 || objetosEntrenamiento[punto.tipo].empty()) return false;
+		const D3DXVECTOR2& mitad = semiextensionEntrenamiento[punto.tipo];
+		caja = { punto.pos.x - mitad.x, punto.pos.x + mitad.x, punto.pos.y - mitad.y, punto.pos.y + mitad.y };
+		return true;
+	}
+
 	void DibujarMarcadores()
 	{
 		// Los puntos de entrenamiento conservan su posicion y radio de interaccion.
@@ -2215,7 +2238,7 @@ public:
 			const D3DXVECTOR3& centro = centroEntrenamiento[tipo];
 			D3DXMATRIX centrar, escala, lugar;
 			D3DXMatrixTranslation(&centrar, -centro.x, -centro.y, -centro.z);
-			D3DXMatrixScaling(&escala, 2.0f, 2.0f, 2.0f);
+			D3DXMatrixScaling(&escala, escalaEntrenamiento, escalaEntrenamiento, escalaEntrenamiento);
 			D3DXVECTOR2 posicion = puntosEntrenamiento[i].pos;
 			D3DXMatrixTranslation(&lugar, posicion.x, terreno->getTerrainCollision(posicion), posicion.y);
 			for (size_t parte = 0; parte < objetosEntrenamiento[tipo].size(); ++parte)
@@ -2264,7 +2287,7 @@ public:
 			for (size_t parte = 0; parte < agnesOBJ.size(); ++parte)
 			{
 				agnesOBJ[parte]->UpdateScene(escala * rotacion * traslacion);
-				agnesOBJ[parte]->DrawScene(camara);
+				agnesOBJ[parte]->DrawScene(camara, pixelAlma);
 			}
 		}
 	}
@@ -2757,10 +2780,13 @@ public:
 			}
 
 			// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
-			for (size_t i = 0; i < 25 + colisionesCementerio.size(); i++)
+			for (size_t i = 0; i < 25 + colisionesCementerio.size() + puntosEntrenamiento.size(); i++)
 			{
 				if (i == 20) continue;
-				const BoxCollider& caja = i < 25 ? castleWalls[i] : colisionesCementerio[i - 25];
+				BoxCollider caja;
+				if (i < 25) caja = castleWalls[i];
+				else if (i < 25 + colisionesCementerio.size()) caja = colisionesCementerio[i - 25];
+				else if (!CajaEntrenamiento(i - 25 - colisionesCementerio.size(), caja)) continue;
 				float minX = caja.minX - playerRadius;
 				float maxX = caja.maxX + playerRadius;
 				float minZ = caja.minZ - playerRadius;
@@ -3016,10 +3042,13 @@ public:
 		// Debug de colisiones: mantener C presionada para verlas en rojo
 		if (showColliders)
 		{
-			for (size_t i = 0; i < 25 + colisionesCementerio.size(); i++)
+			for (size_t i = 0; i < 25 + colisionesCementerio.size() + puntosEntrenamiento.size(); i++)
 			{
 				if (i == 20) continue;
-				const BoxCollider& caja = i < 25 ? castleWalls[i] : colisionesCementerio[i - 25];
+				BoxCollider caja;
+				if (i < 25) caja = castleWalls[i];
+				else if (i < 25 + colisionesCementerio.size()) caja = colisionesCementerio[i - 25];
+				else if (!CajaEntrenamiento(i - 25 - colisionesCementerio.size(), caja)) continue;
 				float cx = (caja.minX + caja.maxX) * 0.5f;
 				float cz = (caja.minZ + caja.maxZ) * 0.5f;
 				float w = caja.maxX - caja.minX;

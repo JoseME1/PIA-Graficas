@@ -564,6 +564,13 @@ bool DXRender::PosicionLibreAlma(float x, float z)
 				return false;
 		}
 
+		for (size_t i = 0; i < puntosEntrenamiento.size(); ++i)
+		{
+			BoxCollider caja;
+			if (CajaEntrenamiento(i, caja) && x > caja.minX - 2.0f && x < caja.maxX + 2.0f &&
+				z > caja.minZ - 2.0f && z < caja.maxZ + 2.0f) return false;
+		}
+
 		return true;
 	}
 
@@ -638,12 +645,12 @@ void DXRender::ColocarAlmas()
 		}
 	}
 
-	// Arranca la fase de las almas: aviso grande y despues el minuto.
+	// Arranca la fase de las almas: aviso grande y despues 30 segundos.
 
 void DXRender::IniciarFaseAlmas()
 {
 		faseAlmas = true;
-		almasTiempo = 60.0f;
+		almasTiempo = 30.0f;
 		almasRecogidas = 0;
 		consumiendoAlmas = false;
 		almasConsumidas = 0;
@@ -716,7 +723,7 @@ void DXRender::RecogerAlmaCercana()
 		almasRecogidas++;
 	}
 
-	// Contador y recogida de almas. El minuto empieza cuando se va el aviso y
+	// Contador y recogida de almas. El tiempo empieza cuando se va el aviso y
 	// termina al agotarse el tiempo o al juntar las 5.
 
 void DXRender::ActualizarFaseAlmas()
@@ -1224,4 +1231,4 @@ void DXRender::ActualizarCarrera()
 		}
 	}
 
-	// Contador del minuto de las almas, arriba al centro de la pantalla.
+	// Contador del tiempo de las almas, arriba al centro de la pantalla.
