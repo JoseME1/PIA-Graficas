@@ -35,3 +35,7 @@ ipch/
 # Converter default output (keep Models/*.txt assets)
 modelo.txt
 shader-error.txt
+
+# Assimp se descarga y compila con preparar_assimp.ps1
+/external/assimp/
+/external/assimp-build/

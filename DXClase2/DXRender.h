@@ -10,6 +10,7 @@
 #include "MeshPrimitives.h"
 #include "AudioManager.h"
 #include "Texto.h"
+#include "ModeloAssimp.h"
 
 
 #include <Xinput.h>
@@ -49,6 +50,11 @@ private:
 	MPrimitives* ataud;
 	MPrimitives* calaca;
 	MPrimitives* calaca2;
+	ModeloAssimp modeloPruebaAnimaciones;
+	ModeloAssimp modeloPruebaSegundoClip;
+	MPrimitives* calacaIdle = nullptr;
+	MPrimitives* calacaIdleFbx = nullptr;
+	double tiempoIdle = 0.0;
 	MPrimitives* castillo;
 	MPrimitives* arbolmuerto1;
 	MPrimitives* arbolmuerto2;
@@ -501,6 +507,12 @@ public:
 		tree2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/tree2.txt", L"Texturas/tree2Color.png", L"", ShaderDiffuse);
 		ataud = new MPrimitives(d3d11Device, d3d11DevCon, "Models/ataud.txt", L"Texturas/ataudColor.png", L"", ShaderDiffuse);
 		calaca = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca.txt", L"Texturas/calacaColor.png", L"", ShaderDiffuse);
+		if (modeloPruebaAnimaciones.Cargar("Models/Animados/calacaIdleyRun.fbx", true) && modeloPruebaAnimaciones.Escena()->HasMeshes())
+			calacaIdle = new MPrimitives(d3d11Device, d3d11DevCon, modeloPruebaAnimaciones.Escena()->mMeshes[0], L"Texturas/calacaColor.png");
+		// Alinea las UV del FBX con la textura y sus recortes entre costillas.
+		if (modeloPruebaSegundoClip.Cargar("Models/Animados/calacaIdleyRun.fbx", true) &&
+			modeloPruebaSegundoClip.Escena()->HasMeshes() && modeloPruebaSegundoClip.Escena()->mNumAnimations >= 2)
+			calacaIdleFbx = new MPrimitives(d3d11Device, d3d11DevCon, modeloPruebaSegundoClip.Escena()->mMeshes[0], L"Texturas/calacaColor.png");
 		calaca2 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/calaca2.txt", L"Texturas/calaca2Color.png", L"", ShaderDiffuse);
 		castillo = new MPrimitives(d3d11Device, d3d11DevCon, "Models/castillo.txt", L"Texturas/castilloColor.png", L"", ShaderDiffuse);
 		arbolmuerto1 = new MPrimitives(d3d11Device, d3d11DevCon, "Models/arbolmuerto1.txt", L"Texturas/arbolmuerto1Color.jpg", L"", ShaderDiffuse);
@@ -2563,6 +2575,29 @@ public:
 		ataud->UpdateScene(escalaAtaud * lugarAtaud);
 		calaca->UpdateScene(escalaCalaca * rotCalaca * lugarCalaca);
 		calaca2->UpdateScene(escalaCalaca2 * lugarCalaca2);
+		if (menuEstado == 0) tiempoIdle += deltaTime;
+		if (calacaIdle)
+		{
+			std::vector<aiVector3D> posiciones, normales;
+			modeloPruebaAnimaciones.Animar(tiempoIdle, posiciones, normales);
+			calacaIdle->ActualizarMallaAnimada(modeloPruebaAnimaciones.Escena()->mMeshes[0], posiciones, normales);
+			D3DXMATRIX escala, lugar;
+			D3DXMatrixScaling(&escala, 0.014f, 0.014f, 0.014f);
+			D3DXVECTOR2 posicion(155.0f, 200.0f);
+			D3DXMatrixTranslation(&lugar, posicion.x, terreno->getTerrainCollision(posicion), posicion.y);
+			calacaIdle->UpdateScene(escala * lugar);
+		}
+		if (calacaIdleFbx)
+		{
+			std::vector<aiVector3D> posiciones, normales;
+			modeloPruebaSegundoClip.Animar(tiempoIdle, posiciones, normales, 1);
+			calacaIdleFbx->ActualizarMallaAnimada(modeloPruebaSegundoClip.Escena()->mMeshes[0], posiciones, normales);
+			D3DXMATRIX escala, lugar;
+			D3DXMatrixScaling(&escala, 0.014f, 0.014f, 0.014f);
+			D3DXVECTOR2 posicion(155.0f, 205.0f);
+			D3DXMatrixTranslation(&lugar, posicion.x, terreno->getTerrainCollision(posicion), posicion.y);
+			calacaIdleFbx->UpdateScene(escala * lugar);
+		}
 		castillo->UpdateScene(escalaCastillo * lugarCastillo);
 		arbolmuerto1->UpdateScene(escalaAm1 * lugarAm1);
 		arbolmuerto2->UpdateScene(escalaAm2 * lugarAm2);
@@ -2684,6 +2719,8 @@ public:
 		tumba->DrawScene(camara);
 		tree2->DrawScene(camara);
 		ataud->DrawScene(camara);
+		if (calacaIdle) calacaIdle->DrawScene(camara);
+		if (calacaIdleFbx) calacaIdleFbx->DrawScene(camara);
 		if (thirdPerson)
 		{
 			calaca->DrawScene(camara);

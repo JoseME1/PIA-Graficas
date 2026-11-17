@@ -3,6 +3,8 @@
 
 #include <map>
 #include <string>
+#include <assimp/scene.h>
+#include <vector>
 
 class MPrimitives {
 private:
@@ -85,6 +87,64 @@ private:
 	
 
 public:
+	void ActualizarMallaAnimada(const aiMesh* mesh, const std::vector<aiVector3D>& posiciones, const std::vector<aiVector3D>& normales)
+	{
+		if (posiciones.size() != mesh->mNumVertices || normales.size() != mesh->mNumVertices) return;
+		std::vector<SimpleVertex> vertices;
+		vertices.reserve(numVertex);
+		for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
+			const aiFace& face = mesh->mFaces[i];
+			if (face.mNumIndices != 3) continue;
+			for (unsigned int j = 0; j < 3; ++j) {
+				unsigned int n = face.mIndices[j];
+				SimpleVertex v = {};
+				v.pos = D3DXVECTOR3(posiciones[n].x, posiciones[n].y, posiciones[n].z);
+				v.normal = D3DXVECTOR3(normales[n].x, normales[n].y, normales[n].z);
+				if (mesh->HasTextureCoords(0)) v.tex = D3DXVECTOR2(mesh->mTextureCoords[0][n].x, mesh->mTextureCoords[0][n].y);
+				vertices.push_back(v);
+			}
+		}
+		for (size_t i = 0; i + 2 < vertices.size(); i += 3) {
+			SimpleVertex& a = vertices[i]; SimpleVertex& b = vertices[i + 1]; SimpleVertex& c = vertices[i + 2];
+			D3DXVECTOR3 e1 = b.pos - a.pos, e2 = c.pos - a.pos;
+			float u1 = b.tex.x - a.tex.x, v1 = b.tex.y - a.tex.y;
+			float u2 = c.tex.x - a.tex.x, v2 = c.tex.y - a.tex.y;
+			float det = u1 * v2 - u2 * v1;
+			D3DXVECTOR3 tangente(1, 0, 0), binormal(0, 0, 1);
+			if (fabsf(det) > 0.000001f) {
+				tangente = (e1 * v2 - e2 * v1) / det;
+				binormal = (e2 * u1 - e1 * u2) / det;
+				if (D3DXVec3LengthSq(&tangente) > 0.000001f) D3DXVec3Normalize(&tangente, &tangente);
+				if (D3DXVec3LengthSq(&binormal) > 0.000001f) D3DXVec3Normalize(&binormal, &binormal);
+			}
+			a.tangent = b.tangent = c.tangent = tangente;
+			a.biTangent = b.biTangent = c.biTangent = binormal;
+		}
+		if (vertices.size() == numVertex && numVertex)
+			d3d11DevCon->UpdateSubresource(VertexBuffer, 0, NULL, vertices.data(), 0, 0);
+	}
+	MPrimitives(ID3D11Device* device, ID3D11DeviceContext* context, const aiMesh* mesh, LPCWSTR texturePath, LPCWSTR normalPath = L"", int shader = ShaderDiffuse)
+	{
+		faceToCam = false;
+		InitScene(device, context, texturePath, normalPath, shader);
+		std::vector<SimpleVertex> vertices;
+		for (unsigned int i = 0; i < mesh->mNumFaces; ++i)
+		{
+			const aiFace& face = mesh->mFaces[i];
+			if (face.mNumIndices != 3) continue;
+			for (unsigned int j = 0; j < 3; ++j)
+			{
+				unsigned int n = face.mIndices[j];
+				SimpleVertex v = {};
+				v.pos = D3DXVECTOR3(mesh->mVertices[n].x, mesh->mVertices[n].y, mesh->mVertices[n].z);
+				if (mesh->HasNormals()) v.normal = D3DXVECTOR3(mesh->mNormals[n].x, mesh->mNormals[n].y, mesh->mNormals[n].z);
+				if (mesh->HasTextureCoords(0)) v.tex = D3DXVECTOR2(mesh->mTextureCoords[0][n].x, mesh->mTextureCoords[0][n].y);
+				vertices.push_back(v);
+			}
+		}
+		numVertex = numIndex = (UINT)vertices.size();
+		if (numVertex) createModelObject(vertices.data());
+	}
 
 	struct SphereBoundingInfo{
 		D3DXVECTOR3 PositionM;
