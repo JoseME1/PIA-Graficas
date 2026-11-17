@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <ctime>
+#include <cfloat>
 #include "Camara.h"
 #include "Light.h"
 #include "MeshPrimitives.h"
@@ -39,6 +40,8 @@ private:
 
 	MPrimitives *skydomo;
 	MPrimitives *terreno;
+	ID3D11PixelShader* pixelTerrenoFondo = nullptr;
+	ID3D11PixelShader* pixelObjetosFondo = nullptr;
 	MPrimitives* agua;
 
 	//MIS MODELOS
@@ -56,8 +59,8 @@ private:
 	int clipJugador = 0;
 	D3DXVECTOR3 posicionJugadorAnterior = D3DXVECTOR3(150.0f, 0.0f, 200.0f);
 	MPrimitives* castillo;
-	ModeloAssimp modeloGradas, modeloBanderaInicio, modeloCementerio;
-	std::vector<MPrimitives*> gradasOBJ, banderaInicioOBJ, cementerioOBJ;
+	ModeloAssimp modeloGradas, modeloBanderaInicio, modeloCementerio, modeloBanderin, modeloMontana, modeloMansion, modeloAgnes;
+	std::vector<MPrimitives*> gradasOBJ, banderaInicioOBJ, cementerioOBJ, banderinOBJ, montanaOBJ, mansionOBJ, agnesOBJ;
 	MPrimitives* publicoGradas[5] = {};
 	MPrimitives* arbolmuerto1;
 	MPrimitives* arbolmuerto2;
@@ -79,13 +82,15 @@ private:
 	{
 		float minX, maxX, minZ, maxZ;
 	};
-	BoxCollider castleWalls[23];
+	BoxCollider castleWalls[25];
 	std::vector<BoxCollider> colisionesCementerio;
 	const float cementerioX = 205.6f, cementerioZ = 207.3f;
 
 	Camara *camara;
 	Camara *skyCamara;
 	AudioManager audio;
+	AudioManager audioAmanecer;
+	bool amanecerConAudio = false, amanecerPausado = false;
 	float audioVolume = 0.2f;
 
 	// HUD de texto en pantalla
@@ -163,9 +168,6 @@ private:
 	bool vistaCarreraActiva = false;	// true si la camara la manda una vista de la carrera
 
 	// Marcadores del circuito dibujados en el mundo
-	MPrimitives* marcadorMeta = nullptr;	// anillo dorado en la meta
-	MPrimitives* marcadorSig = nullptr;		// anillo verde en el siguiente punto
-	MPrimitives* marcadorPunto = nullptr;	// anillo azul en el resto
 	float alturaMarcador = 0.35f;			// altura de los anillos sobre el terreno
 
 	// Flecha del HUD que apunta al siguiente punto
@@ -185,8 +187,6 @@ private:
 	std::vector<D3DXVECTOR2> arosResistencia;
 	std::vector<bool> arosUsados;			// un aro solo se puede usar una vez por carrera
 	float radioAro = 6.0f;					// distancia horizontal para activar el aro
-	MPrimitives* marcadorAro = nullptr;		// aro disponible (magenta)
-	MPrimitives* marcadorAroUsado = nullptr;	// aro ya usado (gris)
 
 	// Calacas rivales de la carrera. De base tienen las mismas estadisticas que
 	// el jugador (las de ruta.txt) y cada hora de entrenamiento mejoran un stat
@@ -325,8 +325,6 @@ private:
 	float radioAlma = 12.0f;	// radio de recogida (el aviso "Pulsa E" usa el mismo)
 	D3DXVECTOR3 almasPos[almasTotal];
 	bool almaDisponible[almasTotal];
-	MPrimitives* almaObjetos[almasTotal] = { nullptr };
-	std::vector<unsigned char> almaPixeles;
 	bool tecla1Last = false, tecla2Last = false, tecla3Last = false;
 
 	// Menu "Consume el poder de las almas": al acabar el minuto el jugador
@@ -438,6 +436,21 @@ public:
 		const char* ruta, LPCWSTR texturaPorDefecto)
 	{
 		return CargarModeloOBJ(modelo, partes, ruta, texturaPorDefecto, std::map<std::string, std::wstring>());
+	}
+
+	void AplicarColoresMateriales(ModeloAssimp& modelo, std::vector<MPrimitives*>& partes)
+	{
+		if (!modelo.Escena()) return;
+		for (unsigned int i = 0; i < modelo.Escena()->mNumMeshes; ++i)
+		{
+			if (!modelo.TexturaDifusa(i).empty()) continue;
+			aiColor3D color(0.5f, 0.5f, 0.5f);
+			modelo.Escena()->mMaterials[modelo.Escena()->mMeshes[i]->mMaterialIndex]->Get(AI_MATKEY_COLOR_DIFFUSE, color);
+			float r = powf((std::max)(0.0f, (std::min)(1.0f, color.r)), 1.0f / 2.2f);
+			float g = powf((std::max)(0.0f, (std::min)(1.0f, color.g)), 1.0f / 2.2f);
+			float b = powf((std::max)(0.0f, (std::min)(1.0f, color.b)), 1.0f / 2.2f);
+			ColorPlano(partes[i], (unsigned char)(r * 255), (unsigned char)(g * 255), (unsigned char)(b * 255));
+		}
 	}
 	DXRender()
 	{
@@ -558,9 +571,23 @@ public:
 		const LPCWSTR publicoTexturas[5] = { L"Texturas/billboards/gatovoid.png", L"Texturas/billboards/gatovoid2.png", L"Texturas/billboards/gatovoid3.png", L"Texturas/billboards/leopardovoid.png", L"Texturas/billboards/perrovoid.png" };
 		const float publicoAnchos[5] = { 1.23f, 1.09f, 1.20f, 1.18f, 1.74f };
 		for (int i = 0; i < 5; ++i)
-			publicoGradas[i] = new MPrimitives(d3d11Device, d3d11DevCon, 1.5f, publicoAnchos[i], publicoTexturas[i], ShaderGUI);
+			publicoGradas[i] = new MPrimitives(d3d11Device, d3d11DevCon, 1.5f, publicoAnchos[i], publicoTexturas[i], ShaderBillboard);
 		CargarModeloOBJ(modeloBanderaInicio, banderaInicioOBJ, "Models/OBJ/Inicio Bandera.obj", L"Models/OBJ/bandera.png");
 		CargarModeloOBJ(modeloCementerio, cementerioOBJ, "Models/OBJ/Cementerio/Cementerio.obj", L"");
+		CargarModeloOBJ(modeloAgnes, agnesOBJ, "Models/OBJ/agnesdigital/agnesdigital_light.obj", L"Models/OBJ/agnesdigital/tex_bdy1019_40_diff.png");
+		if (CargarModeloOBJ(modeloMontana, montanaOBJ, "Models/OBJ/Montana.obj", L"")) AplicarColoresMateriales(modeloMontana, montanaOBJ);
+		if (CargarModeloOBJ(modeloMansion, mansionOBJ, "Models/OBJ/mansion/Casucha.obj", L"")) AplicarColoresMateriales(modeloMansion, mansionOBJ);
+		if (CargarModeloOBJ(modeloBanderin, banderinOBJ, "Models/OBJ/Banderin.obj", L""))
+		{
+			const aiScene* escena = modeloBanderin.Escena();
+			for (unsigned int i = 0; i < escena->mNumMeshes; ++i)
+			{
+				aiColor3D color(1.0f, 1.0f, 1.0f);
+				const aiMaterial* material = escena->mMaterials[escena->mMeshes[i]->mMaterialIndex];
+				material->Get(AI_MATKEY_COLOR_DIFFUSE, color);
+				ColorPlano(banderinOBJ[i], (unsigned char)(255.0f * color.r), (unsigned char)(255.0f * color.g), (unsigned char)(255.0f * color.b));
+			}
+		}
 		if (modeloCementerio.Escena())
 		{
 			const aiScene* escena = modeloCementerio.Escena();
@@ -601,6 +628,10 @@ public:
 		//terreno
 		skydomo = new MPrimitives(d3d11Device, d3d11DevCon, 32, 32, 1000.0f, L"Texturas/sky.jpg", L"Texturas/escudoNormal.jpg", ShaderCielo);
 		terreno = new MPrimitives(d3d11Device, d3d11DevCon, 100.0f, L"Texturas/rock.jpg", L"Texturas/grass.jpg", "Texturas/terreno.bmp", ShaderMultitextura);
+		ID3D10Blob* shaderFondo = MPrimitives::CompileShaderCached(L"pixelShaderMultitextura.ps", "PSFondo", "ps_4_0");
+		d3d11Device->CreatePixelShader(shaderFondo->GetBufferPointer(), shaderFondo->GetBufferSize(), NULL, &pixelTerrenoFondo);
+		ID3D10Blob* shaderObjetosFondo = MPrimitives::CompileShaderCached(L"pixelShader.ps", "PSFondo", "ps_4_0");
+		d3d11Device->CreatePixelShader(shaderObjetosFondo->GetBufferPointer(), shaderObjetosFondo->GetBufferSize(), NULL, &pixelObjetosFondo);
 		agua = new MPrimitives(d3d11Device, d3d11DevCon, 32, L"Texturas/agua.jpg", L"", "Texturas/agua_plana.bmp", ShaderAgua);
 		for (int i = 0; i < 150; i++)
 			pasto[i] = new MPrimitives(d3d11Device, d3d11DevCon,1.5f, 3.0f, L"Texturas/pasto.png", ShaderPasto);
@@ -689,6 +720,7 @@ public:
 
 		audioVolume = v;
 		audio.SetVolume(v);
+		audioAmanecer.SetVolume(v);
 	}
 
 	void AlternarEdicionCircuito()
@@ -706,6 +738,8 @@ public:
 	// Vuelve al dia 1 con la calaca en el spawn y el circuito recargado.
 	void ReiniciarPartida()
 	{
+		if (amanecerConAudio) { audioAmanecer.Shutdown(); amanecerConAudio = false; amanecerPausado = false; }
+		audio.DetenerMusicaCarrera();
 		menuEstado = 0;
 		modoRuta = false;
 		modoCamara = false;
@@ -776,8 +810,9 @@ public:
 	{
 		CalcularRenglonesMenu();
 
-		menuMouseX += (float)mouse.lX / 0.74f;
-		menuMouseY += (float)mouse.lY / 0.70f;
+		bool marcoCarrera = estadoCarrera == CarreraCuenta || estadoCarrera == CarreraCorriendo;
+		menuMouseX += (float)mouse.lX / (marcoCarrera ? 0.74f : 1.0f);
+		menuMouseY += (float)mouse.lY / (marcoCarrera ? 0.70f : 1.0f);
 		if (menuMouseX < 0.0f) menuMouseX = 0.0f;
 		if (menuMouseX > (float)hudScreenW - 1.0f) menuMouseX = (float)hudScreenW - 1.0f;
 		if (menuMouseY < 0.0f) menuMouseY = 0.0f;
@@ -1255,7 +1290,7 @@ public:
 		// en la fase de las almas recoge la que este a tiro; el dia de la
 		// carrera la usa para arrancar junto a la meta.
 		bool eDown = (keyboardState[DIK_E] != 0) || padA;
-		if (eDown && !eLast && !modoRuta && !modoCamara && !consumiendoAlmas)
+		if (eDown && !eLast && !modoRuta && !modoCamara && !consumiendoAlmas && !amanecerConAudio)
 		{
 			if (faseAlmas)
 			{
@@ -1385,6 +1420,9 @@ public:
 	{
 		//Release the COM Objects we created
 		audio.Shutdown();
+		if (pixelTerrenoFondo) { pixelTerrenoFondo->Release(); pixelTerrenoFondo = nullptr; }
+		if (pixelObjetosFondo) { pixelObjetosFondo->Release(); pixelObjetosFondo = nullptr; }
+		if (amanecerConAudio) { audioAmanecer.Shutdown(); amanecerConAudio = false; }
 		SwapChain->Release();
 		d3d11Device->Release();
 		d3d11DevCon->Release();
@@ -2112,7 +2150,44 @@ public:
 		objeto->SetTextureFromPixels(2, 2, pixeles);
 	}
 
-	// Dibuja un anillo acostado en el suelo en cada punto del circuito.
+	void DibujarBanderines(const D3DXVECTOR2& centro, float radio)
+	{
+		float dirX = 0.0f, dirZ = 1.0f, distanciaMinima = FLT_MAX;
+		for (size_t i = 0; i + 1 < puntosRuta.size(); ++i)
+		{
+			float dx = puntosRuta[i + 1].x - puntosRuta[i].x;
+			float dz = puntosRuta[i + 1].y - puntosRuta[i].y;
+			float largo2 = dx * dx + dz * dz;
+			if (largo2 < 0.0001f) continue;
+			float t = ((centro.x - puntosRuta[i].x) * dx + (centro.y - puntosRuta[i].y) * dz) / largo2;
+			t = (std::max)(0.0f, (std::min)(1.0f, t));
+			float x = centro.x - (puntosRuta[i].x + t * dx);
+			float z = centro.y - (puntosRuta[i].y + t * dz);
+			float distancia = x * x + z * z;
+			if (distancia < distanciaMinima)
+			{
+				distanciaMinima = distancia;
+				float largo = sqrtf(largo2);
+				dirX = dx / largo; dirZ = dz / largo;
+			}
+		}
+		D3DXMATRIX escala, rotacion, lugar;
+		D3DXMatrixScaling(&escala, 4.0f, 4.0f, 4.0f);
+		D3DXMatrixRotationY(&rotacion, atan2f(dirX, dirZ));
+		for (int lado = -1; lado <= 1; lado += 2)
+		{
+			D3DXVECTOR2 posicion(centro.x + lado * dirZ * radio * 0.8f,
+				centro.y - lado * dirX * radio * 0.8f);
+			D3DXMatrixTranslation(&lugar, posicion.x, terreno->getTerrainCollision(posicion) + 0.046f, posicion.y);
+			for (size_t i = 0; i < banderinOBJ.size(); ++i)
+			{
+				banderinOBJ[i]->UpdateScene(escala * rotacion * lugar);
+				banderinOBJ[i]->DrawScene(camara);
+			}
+		}
+	}
+
+	// Los entrenamientos conservan sus anillos y el circuito usa banderines.
 	void DibujarMarcadores()
 	{
 		// Puntos de entrenamiento: color segun la barra del HUD, gris si ya se uso en esta hora.
@@ -2146,70 +2221,25 @@ public:
 		if (puntosRuta.empty())
 			return;
 
-		for (int i = 0; i < (int)puntosRuta.size(); i++)
+		for (size_t i = 0; i < puntosRuta.size(); ++i)
 		{
-			// Con la edicion apagada solo queda el aro de inicio
-			if (!edicionCircuito && i != 0)
-				continue;
-
-			MPrimitives* anillo = marcadorPunto;
-			float radio = radioPunto;
-
-			if (i == 0)
-			{
-				anillo = marcadorMeta;
-				radio = radioMeta;
-			}
-			else if (i == siguientePunto && (estadoCarrera == CarreraCorriendo || estadoCarrera == CarreraCuenta))
-			{
-				anillo = marcadorSig;
-				radio = radioPunto * (1.0f + 0.06f * sinf(g_Time * 6.0f));	// late para llamar la atencion
-			}
-
-			float y = terreno->getTerrainCollision(puntosRuta[i]) + alturaMarcador;
-
-			D3DXMATRIX escala, rotX, traslacion;
-			D3DXMatrixScaling(&escala, radio, radio, radio);	// tambien el grosor del tubo
-			D3DXMatrixRotationX(&rotX, -D3DX_PI * 0.5f);		// el toro nace en el plano XY: acostarlo
-			D3DXMatrixTranslation(&traslacion, puntosRuta[i].x, y, puntosRuta[i].y);
-
-			anillo->UpdateScene(escala * rotX * traslacion);
-			anillo->DrawScene(camara);
+			float dxMeta = puntosRuta[i].x - puntosRuta[0].x;
+			float dzMeta = puntosRuta[i].y - puntosRuta[0].y;
+			if (dxMeta * dxMeta + dzMeta * dzMeta <= radioMeta * radioMeta) continue;
+			if (!edicionCircuito && i != 0 && estadoCarrera != CarreraCuenta && estadoCarrera != CarreraCorriendo) continue;
+			DibujarBanderines(puntosRuta[i], i == 0 ? radioMeta : radioPunto);
 		}
 
-		// Aros de resistencia: magenta si estan disponibles, gris si ya se usaron.
-		// Con la edicion apagada solo se ven mientras se corre la carrera.
-		if (!edicionCircuito && estadoCarrera != CarreraCorriendo)
-			return;
-
-		for (size_t i = 0; i < arosResistencia.size(); i++)
-		{
-			bool usado = (i < arosUsados.size() && arosUsados[i]);
-			MPrimitives* anillo = usado ? marcadorAroUsado : marcadorAro;
-			float radio = radioAro;
-
-			if (!usado)
-				radio *= (1.0f + 0.06f * sinf(g_Time * 6.0f));	// late para llamar la atencion
-
-			float y = terreno->getTerrainCollision(arosResistencia[i]) + alturaMarcador;
-
-			D3DXMATRIX escala, rotX, traslacion;
-			D3DXMatrixScaling(&escala, radio, radio, radio);
-			D3DXMatrixRotationX(&rotX, -D3DX_PI * 0.5f);
-			D3DXMatrixTranslation(&traslacion, arosResistencia[i].x, y, arosResistencia[i].y);
-
-			anillo->UpdateScene(escala * rotX * traslacion);
-			anillo->DrawScene(camara);
-		}
+		if (!edicionCircuito && estadoCarrera != CarreraCorriendo) return;
+		for (size_t i = 0; i < arosResistencia.size(); ++i)
+			DibujarBanderines(arosResistencia[i], radioAro);
 	}
 
-	// Almas de poder: una llama vertical que flota sobre el suelo.
+	// Personajes de Agnes Digital que reemplazan visualmente las almas.
 	void DibujarAlmas()
 	{
 		if (!faseAlmas)
 			return;
-
-		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
 
 		for (int i = 0; i < almasTotal; i++)
 		{
@@ -2219,18 +2249,18 @@ public:
 			// Flota y late un poco, cada una con su propio ritmo
 			float fase = g_Time * 3.0f + i * 1.3f;
 			float flotar = 0.25f * sinf(fase);
-			float pulso = 1.0f + 0.05f * sinf(fase * 1.7f);
-
-			D3DXMATRIX escala, traslacion;
-			D3DXMatrixScaling(&escala, pulso, pulso, pulso);
+			D3DXMATRIX escala, rotacion, traslacion;
+			D3DXMatrixScaling(&escala, 8.0f, 8.0f, 8.0f);
+			D3DXMatrixRotationY(&rotacion, g_Time + i * 1.3f);
 			D3DXMatrixTranslation(&traslacion, almasPos[i].x,
-				almasPos[i].y + 1.3f + flotar, almasPos[i].z);
+				almasPos[i].y + 0.4f + flotar, almasPos[i].z);
 
-			almaObjetos[i]->UpdateScene(escala * traslacion);
-			almaObjetos[i]->DrawScene(camara);
+			for (size_t parte = 0; parte < agnesOBJ.size(); ++parte)
+			{
+				agnesOBJ[parte]->UpdateScene(escala * rotacion * traslacion);
+				agnesOBJ[parte]->DrawScene(camara);
+			}
 		}
-
-		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
 	}
 
 	// Flecha en pantalla que apunta al siguiente checkpoint.
@@ -2356,11 +2386,6 @@ public:
 
 		// Marcadores del circuito: anillos de color plano en el suelo.
 		// El toro se crea con radio 1 y se escala al radio real de cada punto.
-		marcadorMeta = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
-		marcadorSig = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
-		marcadorPunto = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
-		marcadorAro = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
-		marcadorAroUsado = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorEntVel = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorEntAcel = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
 		marcadorEntRes = new MPrimitives(d3d11Device, d3d11DevCon, 8, 40, 1.0f, 0.10f, L"", L"", ShaderTexto);
@@ -2383,13 +2408,6 @@ public:
 		hudTeclaEspacio->SetTextureFromPixels((UINT)teclaAncho, (UINT)teclaAlto,
 			teclaEspacioPixeles.data());
 
-		// Almas de poder: billboards con la llama generada en CPU
-		for (int i = 0; i < almasTotal; i++)
-		{
-			almaObjetos[i] = new MPrimitives(d3d11Device, d3d11DevCon, 2.6f, 1.2f, L"", ShaderTexto);
-			GenerarAlmaBGRA(96, 256, i * 1.7f + 0.4f, almaPixeles);
-			almaObjetos[i]->SetTextureFromPixels(96, 256, almaPixeles.data());
-		}
 		hudAlmasContador = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudAlmasOpciones = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
 		hudAlmasRestantes = new MPrimitives(d3d11Device, d3d11DevCon, 2.0f, 2.0f, L"", camara, ShaderTexto);
@@ -2445,11 +2463,6 @@ public:
 			calacasIA[i].yaw = 0.0f;
 		}
 
-		ColorPlano(marcadorMeta, 255, 200, 60);		// dorado
-		ColorPlano(marcadorSig, 80, 255, 120);		// verde
-		ColorPlano(marcadorPunto, 90, 160, 255);	// azul
-		ColorPlano(marcadorAro, 255, 80, 220);		// magenta: aro disponible
-		ColorPlano(marcadorAroUsado, 90, 90, 90);	// gris: aro ya usado
 		ColorPlano(marcadorEntVel, 80, 200, 255);	// cian: velocidad
 		ColorPlano(marcadorEntAcel, 255, 170, 60);	// naranja: aceleracion
 		ColorPlano(marcadorEntRes, 80, 230, 110);	// verde: resistencia
@@ -2486,6 +2499,8 @@ public:
 		castleWalls[20] = { 146.7667f, 151.0f, 203.8f, 226.4f }; // gradas escaladas
 		castleWalls[21] = { 113.6f, 136.2f, 116.7666f, 121.0f };
 		castleWalls[22] = { 136.2f, 158.8f, 116.7666f, 121.0f };
+		castleWalls[23] = { 113.6f, 136.2f, 181.4f, 185.6334f };
+		castleWalls[24] = { 136.2f, 158.8f, 181.4f, 185.6334f };
 		// Paredes del castillo (modelo 63 x 40 en el mundo, X 118-182, Z 230-270)
 		// Puerta en la pared sur, hueco de X 147 a 153
 		// Paredes exteriores
@@ -2577,6 +2592,7 @@ public:
 
 	void UpdateScene()
 	{
+		audio.ActualizarMusica();
 		auto now = std::chrono::steady_clock::now();
 		deltaTime = std::chrono::duration<float>(now - lastTime).count();
 		lastTime = now;
@@ -2744,10 +2760,10 @@ public:
 			}
 
 			// Colisiones con las paredes del castillo (cajas en XZ, con puerta al sur)
-			for (size_t i = 0; i < 23 + colisionesCementerio.size(); i++)
+			for (size_t i = 0; i < 25 + colisionesCementerio.size(); i++)
 			{
 				if (i == 20) continue;
-				const BoxCollider& caja = i < 23 ? castleWalls[i] : colisionesCementerio[i - 23];
+				const BoxCollider& caja = i < 25 ? castleWalls[i] : colisionesCementerio[i - 25];
 				float minX = caja.minX - playerRadius;
 				float maxX = caja.maxX + playerRadius;
 				float minZ = caja.minZ - playerRadius;
@@ -2874,6 +2890,29 @@ public:
 		}
 		castillo->DrawScene(camara);
 		{
+			// Posiciones dentro del castillo y en el nivel superior de sus ventanas.
+			const float publicoCastillo[][3] = {
+				{ 132.0f, 0.75f, 236.0f }, { 136.0f, 0.75f, 236.0f },
+				{ 141.0f, 0.75f, 238.0f }, { 150.0f, 0.75f, 238.0f },
+				{ 159.0f, 0.75f, 238.0f }, { 164.0f, 0.75f, 236.0f },
+				{ 168.0f, 0.75f, 236.0f }, { 133.0f, 0.75f, 252.0f },
+				{ 139.0f, 0.75f, 252.0f }, { 150.0f, 0.75f, 254.0f },
+				{ 161.0f, 0.75f, 252.0f }, { 167.0f, 0.75f, 252.0f },
+				{ 125.0f, 10.0f, 231.2f }, { 133.0f, 10.0f, 231.2f },
+				{ 140.0f, 10.0f, 231.2f }, { 160.0f, 10.0f, 231.2f },
+				{ 167.0f, 10.0f, 231.2f }, { 175.0f, 10.0f, 231.2f }
+			};
+			float alturaCastillo = terreno->getTerrainCollision(D3DXVECTOR2(150.0f, 250.0f)) + 0.05f;
+			for (int i = 0; i < (int)(sizeof(publicoCastillo) / sizeof(publicoCastillo[0])); ++i)
+			{
+				D3DXMATRIX lugar;
+				D3DXMatrixTranslation(&lugar, publicoCastillo[i][0], alturaCastillo + publicoCastillo[i][1], publicoCastillo[i][2]);
+				MPrimitives* personaje = publicoGradas[i % 5];
+				personaje->UpdateScene(lugar);
+				personaje->DrawScene(camara);
+			}
+		}
+		{
 			D3DXVECTOR2 posicion(cementerioX - 30.3f, cementerioZ + 0.7f);
 			D3DXMATRIX lugar;
 			D3DXMatrixTranslation(&lugar, 0.0f, terreno->getTerrainCollision(posicion), 0.0f);
@@ -2887,11 +2926,13 @@ public:
 			D3DXMATRIX lugar, escala;
 			D3DXMatrixScaling(&escala, 2.0f, 2.0f, 2.0f);
 			D3DXVECTOR2 posicion;
-			for (int grada = 0; grada < 2; ++grada)
+			for (int grada = 0; grada < 4; ++grada)
 			{
-				D3DXVECTOR2 ubicacion(120.0f + grada * 22.6f, 120.0f);
+				bool opuesta = grada >= 2;
+				int indice = grada % 2;
+				D3DXVECTOR2 ubicacion((opuesta ? 129.8f : 120.0f) + indice * 22.6f, opuesta ? 182.4f : 120.0f);
 				D3DXMATRIX rotacion;
-				D3DXMatrixRotationY(&rotacion, -D3DX_PI * 0.5f);
+				D3DXMatrixRotationY(&rotacion, (opuesta ? 1.0f : -1.0f) * D3DX_PI * 0.5f);
 				D3DXMatrixTranslation(&lugar, ubicacion.x, terreno->getTerrainCollision(ubicacion), ubicacion.y);
 				for (size_t i = 0; i < gradasOBJ.size(); ++i) { gradasOBJ[i]->UpdateScene(escala * rotacion * lugar); gradasOBJ[i]->DrawScene(camara); }
 				const float filasX[3] = { 0.1f, -0.5f, -1.1f };
@@ -2924,7 +2965,52 @@ public:
 		agua->DrawScene(camara);
 
 
+		if (pixelTerrenoFondo)
+		{
+			D3DXMATRIX escalaFondo, lugarFondo, identidad;
+			D3DXMatrixScaling(&escalaFondo, 3.0f, 1.0f, 3.0f);
+			D3DXMatrixTranslation(&lugarFondo, -299.0f, -1.0f, -299.0f);
+			terreno->UpdateScene(escalaFondo * lugarFondo);
+			terreno->DrawScene(camara, pixelTerrenoFondo);
+			D3DXMatrixIdentity(&identidad);
+			terreno->UpdateScene(identidad);
+		}
 		terreno->DrawScene(camara);
+		if (pixelObjetosFondo)
+		{
+			// Coordenadas en el terreno ampliado: inversa de escala 3 y traslacion -299.
+			const float montanas[][4] = {
+				{ -95.0f, 35.0f, 45.0f, 0.2f }, { -90.0f, 245.0f, 50.0f, 1.4f },
+				{ 400.0f, 40.0f, 45.0f, 2.1f }, { 405.0f, 255.0f, 50.0f, 3.0f },
+				{ 55.0f, -95.0f, 42.0f, 0.7f }, { 230.0f, 410.0f, 48.0f, 2.5f }
+			};
+			for (int i = 0; i < 6; ++i)
+			{
+				float x = montanas[i][0], z = montanas[i][1], tam = montanas[i][2];
+				float y = terreno->getTerrainCollision(D3DXVECTOR2((x + 299.0f) / 3.0f, (z + 299.0f) / 3.0f)) - 1.0f + 0.081103f * tam;
+				D3DXMATRIX escala, rotacion, lugar;
+				D3DXMatrixScaling(&escala, tam, tam, tam);
+				D3DXMatrixRotationY(&rotacion, montanas[i][3]);
+				D3DXMatrixTranslation(&lugar, x, y, z);
+				for (size_t j = 0; j < montanaOBJ.size(); ++j) { montanaOBJ[j]->UpdateScene(escala * rotacion * lugar); montanaOBJ[j]->DrawScene(camara, pixelObjetosFondo); }
+			}
+			const float edificios[][4] = {
+				{ -45.0f, 145.0f, 2.0f, 1.57f }, { 345.0f, 160.0f, 2.0f, -1.57f },
+				{ 105.0f, -45.0f, 2.0f, 0.0f }, { 210.0f, 350.0f, 2.0f, 3.14159f }
+			};
+			for (int i = 0; i < 4; ++i)
+			{
+				float x = edificios[i][0], z = edificios[i][1], tam = edificios[i][2];
+				float y = terreno->getTerrainCollision(D3DXVECTOR2((x + 299.0f) / 3.0f, (z + 299.0f) / 3.0f)) - 1.0f;
+				D3DXMATRIX escala, rotacion, lugar;
+				D3DXMatrixScaling(&escala, tam, tam, tam);
+				D3DXMatrixRotationY(&rotacion, edificios[i][3]);
+				D3DXMatrixTranslation(&lugar, x, y, z);
+				if (i < 2)
+					for (size_t j = 0; j < mansionOBJ.size(); ++j) { mansionOBJ[j]->UpdateScene(escala * rotacion * lugar); mansionOBJ[j]->DrawScene(camara, pixelObjetosFondo); }
+				else { castillo->UpdateScene(escala * rotacion * lugar); castillo->DrawScene(camara, pixelObjetosFondo); }
+			}
+		}
 		skydomo->DrawScene(skyCamara);
 
 		DibujarMarcadores();
@@ -2933,10 +3019,10 @@ public:
 		// Debug de colisiones: mantener C presionada para verlas en rojo
 		if (showColliders)
 		{
-			for (size_t i = 0; i < 23 + colisionesCementerio.size(); i++)
+			for (size_t i = 0; i < 25 + colisionesCementerio.size(); i++)
 			{
 				if (i == 20) continue;
-				const BoxCollider& caja = i < 23 ? castleWalls[i] : colisionesCementerio[i - 23];
+				const BoxCollider& caja = i < 25 ? castleWalls[i] : colisionesCementerio[i - 25];
 				float cx = (caja.minX + caja.maxX) * 0.5f;
 				float cz = (caja.minZ + caja.maxZ) * 0.5f;
 				float w = caja.maxX - caja.minX;
@@ -2966,10 +3052,11 @@ public:
 		// La UI conserva sus coordenadas, escaladas al interior libre del marco.
 		D3D11_VIEWPORT viewportHUD;
 		ZeroMemory(&viewportHUD, sizeof(viewportHUD));
-		viewportHUD.TopLeftX = hudScreenW * 0.13f;
-		viewportHUD.TopLeftY = hudScreenH * 0.09f;
-		viewportHUD.Width = hudScreenW * 0.74f;
-		viewportHUD.Height = hudScreenH * 0.70f;
+		bool marcoCarrera = estadoCarrera == CarreraCuenta || estadoCarrera == CarreraCorriendo;
+		viewportHUD.TopLeftX = marcoCarrera ? hudScreenW * 0.13f : 0.0f;
+		viewportHUD.TopLeftY = marcoCarrera ? hudScreenH * 0.09f : 0.0f;
+		viewportHUD.Width = hudScreenW * (marcoCarrera ? 0.74f : 1.0f);
+		viewportHUD.Height = hudScreenH * (marcoCarrera ? 0.70f : 1.0f);
 		viewportHUD.MaxDepth = 1.0f;
 		d3d11DevCon->RSSetViewports(1, &viewportHUD);
 		DibujarHUD();
@@ -2980,11 +3067,14 @@ public:
 		viewportCompleto.Height = (float)hudScreenH;
 		viewportCompleto.MaxDepth = 1.0f;
 		d3d11DevCon->RSSetViewports(1, &viewportCompleto);
-		d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
-		d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
-		hudMarco->DrawHUD(0.0f, 0.0f, (float)hudScreenW, (float)hudScreenH, hudScreenW, hudScreenH);
-		d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
-		d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+		if (marcoCarrera)
+		{
+			d3d11DevCon->OMSetDepthStencilState(depthDisabledState, 0);
+			d3d11DevCon->OMSetBlendState(alphaBlendState, NULL, 0xFFFFFFFF);
+			hudMarco->DrawHUD(0.0f, 0.0f, (float)hudScreenW, (float)hudScreenH, hudScreenW, hudScreenH);
+			d3d11DevCon->OMSetBlendState(NULL, NULL, 0xFFFFFFFF);
+			d3d11DevCon->OMSetDepthStencilState(NULL, 0);
+		}
 
 		//Present the backbuffer to the screen
 		HRESULT hr = SwapChain->Present(1, 0);

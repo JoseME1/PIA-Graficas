@@ -73,3 +73,12 @@ finalColor = lerp(finalColor, fogColor, fogFactor);
 
 	return float4(finalColor,1);
 }
+
+// El paisaje reutiliza la malla del terreno, dejando libre la zona jugable.
+float4 PSFondo(VS_OUTPUT input) : SV_Target
+{
+	if (input.worldPos.x >= 0.0f && input.worldPos.x <= 299.0f &&
+		input.worldPos.z >= 0.0f && input.worldPos.z <= 299.0f)
+		discard;
+	return PS(input);
+}

@@ -39,11 +39,11 @@ VS_OUTPUT VS(float4 inPos : POSITION, float4 inTextCoord : TEXTURE, float3 norma
 	float4 worldPos = mul(displacedPos, World);
 	output.Pos = mul(displacedPos, WorldViewProjection);
 
-	output.normal = mul(normal, World);
-    output.TexCoord = inTextCoord;
+	output.normal = mul(normal, (float3x3)World);
+    output.TexCoord = inTextCoord.xy;
 	output.viewDirection = normalize(CameraPos.xyz - worldPos.xyz);
-	output.tangent = mul(tangent, World);
-	output.binormal = mul(binormal, World);
+	output.tangent = mul(tangent, (float3x3)World);
+	output.binormal = mul(binormal, (float3x3)World);
 	output.vectPos = inPos;
 	output.maxHeight = MaxH;
 	output.worldPos = worldPos.xyz;

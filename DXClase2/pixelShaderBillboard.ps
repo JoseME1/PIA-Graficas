@@ -1,0 +1,45 @@
+struct Light
+{
+    float3 direction;
+    float specularPower;
+    float4 ambient;
+    float4 diffuse;
+    float4 specular;
+};
+
+cbuffer ConstantBufferPS
+{
+    Light light;
+};
+
+struct VS_OUTPUT
+{
+    float4 Pos : SV_POSITION;
+    float2 TexCoord : TEXTURE;
+    float3 normal : NORMAL;
+    float3 viewDirection : COORDS;
+    float3 tangent : TANGENT;
+    float3 binormal : BINORMAL;
+    float4 vectPos : POSITION;
+    float maxHeight : HEIGHT;
+    float3 worldPos : WORLDPOS;
+    float fogDist : FOGDIST;
+};
+
+Texture2D ObjTexture;
+SamplerState ObjSamplerState;
+
+float4 PS(VS_OUTPUT input) : SV_Target
+{
+    float4 textura = ObjTexture.Sample(ObjSamplerState, input.TexCoord);
+    clip(textura.a - 0.9f);
+
+    // La luz se calcula hacia arriba para que no cambie al girar la camara.
+    float difusa = saturate(dot(float3(0.0f, 1.0f, 0.0f), normalize(light.direction)));
+    float3 color = textura.rgb * (light.ambient.rgb + light.diffuse.rgb * difusa);
+
+    float altura = exp(-max(input.worldPos.y - 3.0f, 0.0f) * 0.08f);
+    float niebla = saturate(1.0f - exp(-0.015f * input.fogDist * altura));
+    float3 colorNiebla = float3(0.80f, 0.36f, 0.22f) * (light.ambient.rgb + light.diffuse.rgb * 0.5f);
+    return float4(lerp(color, colorNiebla, niebla), textura.a);
+}

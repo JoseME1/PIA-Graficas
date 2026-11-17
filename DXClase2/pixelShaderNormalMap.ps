@@ -38,6 +38,7 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 	input.binormal = normalize(input.binormal);
 
 	float4 textureColor = ObjTexture.Sample( ObjSamplerState, input.TexCoord );
+	clip(textureColor.a - 0.9f);
 	float4 normalMap = ObjNormTex.Sample( ObjSamplerState, input.TexCoord );
 
 	//Change normal map range from [0, 1] to [-1, 1]

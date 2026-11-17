@@ -52,7 +52,7 @@ private:
 
 	int CantOfSections;
 	int TEXTURE_REPEAT;
-	bool faceToCam;
+	bool faceToCam = false;
 
 	//The constant buffer Structure
 	struct ConstantBuffer
@@ -156,7 +156,6 @@ public:
 	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, float Size, LPCWSTR texturePath, LPCWSTR textureNormalPath, int ShaderType)
 	{
 		this->Size = Size;
-		light.specularPower = 2;
 
 		InitScene(d3d11Device, d3d11DevCon, texturePath, textureNormalPath, ShaderType);
 		createCube();
@@ -168,7 +167,6 @@ public:
 	MPrimitives(ID3D11Device* d3d11Device, ID3D11DeviceContext* d3d11DevCon, LPCWSTR texturePath, int ShaderType)
 	{
 		this->Size = 1.0f;
-		light.specularPower = 2;
 
 		InitScene(d3d11Device, d3d11DevCon, texturePath, L"", ShaderType);
 		createOctahedron();
@@ -305,11 +303,15 @@ public:
 	}
 
 	// Compila cada shader una sola vez y comparte el blob compilado entre todas las instancias
-	// (cada archivo .vs/.ps de este proyecto tiene un solo entry point).
+	// Se distingue tambien el punto de entrada y el perfil del shader.
 	static ID3D10Blob* CompileShaderCached(LPCWSTR file, LPCSTR entry, LPCSTR target)
 	{
 		static std::map<std::wstring, ID3D10Blob*> cache;
 		std::wstring key(file);
+		key += L"|";
+		key.append(entry, entry + strlen(entry));
+		key += L"|";
+		key.append(target, target + strlen(target));
 
 		std::map<std::wstring, ID3D10Blob*>::iterator it = cache.find(key);
 		if (it != cache.end())
@@ -378,6 +380,9 @@ public:
 		case ShaderTexto:
 			pixelShaderFile = L"pixelShaderTexto.ps";
 			break;
+		case ShaderBillboard:
+			pixelShaderFile = L"pixelShaderBillboard.ps";
+			break;
 		default:
 			break;
 		}
@@ -431,6 +436,8 @@ public:
 		// La segunda capa de textura solo la usan los objetos con shader de multitextura
 		if (ShaderType == ShaderMultitextura)
 			Texture2 = LoadTextureCached(d3d11Device, L"Texturas/rock.jpg");
+		else if (ShaderType == ShaderCielo)
+			Texture2 = LoadTextureCached(d3d11Device, L"Texturas/operasol.png");
 
 		// Describe the Sample State
 		D3D11_SAMPLER_DESC sampDesc;
@@ -1452,7 +1459,6 @@ public:
 
 		ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
 		vertexBufferData.pSysMem = vertex;
-		d3d11Device->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &VertexBuffer);
 
 		//los indices
 		int numTriangles = numIndex / 3;
@@ -1466,6 +1472,7 @@ public:
 			CalculateTangentBinormal(vertex[i0], vertex[i1], vertex[i2], vertex[i1].tangent, vertex[i1].biTangent);
 			CalculateTangentBinormal(vertex[i0], vertex[i1], vertex[i2], vertex[i2].tangent, vertex[i2].biTangent);
 		}
+		d3d11Device->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &VertexBuffer);
 
 		D3D11_BUFFER_DESC indexBufferDesc;
 		ZeroMemory(&indexBufferDesc, 
@@ -1522,7 +1529,14 @@ public:
 		tvVector[1] = vertex3.tex.y - vertex1.tex.y;
 
 		// Calculate the denominator of the tangent/binormal equation.
-		den = 1.0f / (tuVector[0] * tvVector[1] - tuVector[1] * tvVector[0]);
+		den = tuVector[0] * tvVector[1] - tuVector[1] * tvVector[0];
+		if (fabsf(den) < 0.000001f)
+		{
+			tangent = D3DXVECTOR3(1.0f, 0.0f, 0.0f);
+			binormal = D3DXVECTOR3(0.0f, 0.0f, 1.0f);
+			return;
+		}
+		den = 1.0f / den;
 
 		// Calculate the cross products and multiply by the coefficient to get the tangent and binormal.
 		tangent = (tvVector[1] * vector1 - tvVector[0] * vector2) * den;
@@ -1532,13 +1546,15 @@ public:
 		length = sqrt((tangent.x * tangent.x) + (tangent.y * tangent.y) + (tangent.z * tangent.z));
 
 		// Normalize the normal and then store it
-		tangent /= length;
+		if (length > 0.000001f) tangent /= length;
+		else tangent = D3DXVECTOR3(1.0f, 0.0f, 0.0f);
 
 		// Calculate the length of this normal.
 		length = sqrt((binormal.x * binormal.x) + (binormal.y * binormal.y) + (binormal.z * binormal.z));
 
 		// Normalize the normal and then store it
-		binormal /= length;
+		if (length > 0.000001f) binormal /= length;
+		else binormal = D3DXVECTOR3(0.0f, 0.0f, 1.0f);
 
 		return;
 	}
@@ -1548,7 +1564,7 @@ public:
 		this->World = World;
 	}
 
-	void DrawScene(Camara *camara)
+	void DrawScene(Camara *camara, ID3D11PixelShader* pixelShaderAlternativo = nullptr)
 	{
 		if (faceToCam)
 		{
@@ -1566,7 +1582,7 @@ public:
 
 		//Set Vertex and Pixel Shaders
 		d3d11DevCon->VSSetShader(VS, 0, 0);
-		d3d11DevCon->PSSetShader(PS, 0, 0);
+		d3d11DevCon->PSSetShader(pixelShaderAlternativo ? pixelShaderAlternativo : PS, 0, 0);
 
 		//Set the vertex and the index buffer
 		UINT stride = sizeof(SimpleVertex);

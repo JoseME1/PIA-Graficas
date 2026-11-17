@@ -52,6 +52,9 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="pixelShaderBillboard.ps">
+      <Filter>Resource Files</Filter>
+    </None>
     <None Include="vertexShader.vs">
       <Filter>Resource Files</Filter>
     </None>

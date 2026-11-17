@@ -15,9 +15,12 @@ private:
     WAVEFORMATEX wfx = {};
     BYTE* pAudioData = nullptr;
     XAUDIO2_BUFFER buffer = {};
+    AudioManager* musicaCarrera = nullptr;
+    float volumenActual = 0.3f;
+    bool comInicializado = false;
 
     // Lee un WAV PCM y llena wfx + pAudioData
-    bool LoadWav(const wchar_t* filename)
+    bool LoadWav(const wchar_t* filename, bool repetir)
     {
         std::ifstream file(filename, std::ios::binary);
         if (!file) return false;
@@ -46,6 +49,7 @@ private:
                 wfx.cbSize = 0;
                 if (size > toRead)
                     file.seekg(size - toRead, std::ios::cur);
+                if (size & 1) file.seekg(1, std::ios::cur);
             }
 
             else if (strncmp(id, "data", 4) == 0)
@@ -55,23 +59,37 @@ private:
                 buffer.AudioBytes = size;
                 buffer.pAudioData = pAudioData;
                 buffer.Flags = XAUDIO2_END_OF_STREAM;
-                buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+                buffer.LoopCount = repetir ? XAUDIO2_LOOP_INFINITE : 0;
                 return true;
             }
             else
             {
                 file.seekg(size, std::ios::cur);
+                if (size & 1) file.seekg(1, std::ios::cur);
             }
         }
         return false;
     }
 
 public:
-    bool Init(const wchar_t* filename, float volume = 0.3f)
+    void Pausar() { if (pSource) pSource->Stop(0); }
+    void Reanudar() { if (pSource) pSource->Start(0); }
+    float Progreso() const
     {
-        if (!LoadWav(filename)) return false;
+        if (!pSource || !wfx.nBlockAlign || !buffer.AudioBytes) return 1.0f;
+        XAUDIO2_VOICE_STATE estado = {};
+        pSource->GetState(&estado);
+        if (estado.BuffersQueued == 0) return 1.0f;
+        float progreso = (float)((double)estado.SamplesPlayed / (buffer.AudioBytes / wfx.nBlockAlign));
+        return progreso < 1.0f ? progreso : 1.0f;
+    }
+    bool Init(const wchar_t* filename, float volume = 0.3f, bool repetir = true)
+    {
+        volumenActual = volume;
+        if (!LoadWav(filename, repetir)) return false;
 
-        CoInitializeEx(NULL, COINIT_MULTITHREADED);
+        HRESULT com = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+        comInicializado = SUCCEEDED(com);
         if (FAILED(XAudio2Create(&pXAudio2, 0, XAUDIO2_DEFAULT_PROCESSOR)))
             return false;
         if (FAILED(pXAudio2->CreateMasteringVoice(&pMastering)))
@@ -79,19 +97,54 @@ public:
         if (FAILED(pXAudio2->CreateSourceVoice(&pSource, &wfx)))
             return false;
 
-        pSource->SetVolume(volume);
-        pSource->SubmitSourceBuffer(&buffer);
-        pSource->Start(0);
+        if (FAILED(pSource->SetVolume(volume)) ||
+            FAILED(pSource->SubmitSourceBuffer(&buffer)) || FAILED(pSource->Start(0)))
+            return false;
         return true;
     }
 
     void SetVolume(float volume)
     {
+        volumenActual = volume;
         if (pSource) pSource->SetVolume(volume);
+        if (musicaCarrera) musicaCarrera->SetVolume(volume);
+    }
+
+    bool IniciarMusicaCarrera()
+    {
+        DetenerMusicaCarrera();
+        musicaCarrera = new AudioManager();
+        if (!musicaCarrera->Init(L"Sonidos/umapyoi.wav", volumenActual, false))
+        {
+            musicaCarrera->Shutdown();
+            delete musicaCarrera;
+            musicaCarrera = nullptr;
+            return false;
+        }
+        if (pSource) pSource->Stop(0);
+        return true;
+    }
+
+    void DetenerMusicaCarrera()
+    {
+        if (!musicaCarrera) return;
+        musicaCarrera->Shutdown();
+        delete musicaCarrera;
+        musicaCarrera = nullptr;
+        if (pSource) pSource->Start(0);
+    }
+
+    void ActualizarMusica()
+    {
+        if (!musicaCarrera || !musicaCarrera->pSource) return;
+        XAUDIO2_VOICE_STATE estado = {};
+        musicaCarrera->pSource->GetState(&estado);
+        if (estado.BuffersQueued == 0) DetenerMusicaCarrera();
     }
 
     void Shutdown()
     {
+        DetenerMusicaCarrera();
         if (pSource)
         {
             pSource->Stop(0);
@@ -109,7 +162,7 @@ public:
             pXAudio2->Release();
             pXAudio2 = nullptr;
         }
-        CoUninitialize();
+        if (comInicializado) { CoUninitialize(); comInicializado = false; }
         delete[] pAudioData;
         pAudioData = nullptr;
     }

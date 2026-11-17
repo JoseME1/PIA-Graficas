@@ -30,7 +30,7 @@ Texture2D ObjTexture;
 Texture2D ObjNormTex;
 SamplerState ObjSamplerState;
 
-float4 PS(VS_OUTPUT input) : SV_TARGET
+float4 DibujarConNiebla(VS_OUTPUT input, float fogDensity)
 {
 	float3 N = normalize(input.normal);
 	float3 L = normalize(light.direction);
@@ -50,8 +50,6 @@ float4 PS(VS_OUTPUT input) : SV_TARGET
 
 	clip(textureColor.a-0.9f);
 
-	float fogDensity = 0.015f;
-
 	float fogHeightFalloff = 0.08f;
 	float fogBaseHeight = 3.0f;
 	float heightFactor = exp(-max(input.worldPos.y - fogBaseHeight, 0.0f) * fogHeightFalloff);
@@ -62,3 +60,6 @@ float4 PS(VS_OUTPUT input) : SV_TARGET
 
 	return float4(finalColor, textureColor.a);
 }
+
+float4 PS(VS_OUTPUT input) : SV_TARGET { return DibujarConNiebla(input, 0.015f); }
+float4 PSFondo(VS_OUTPUT input) : SV_TARGET { return DibujarConNiebla(input, 0.003f); }

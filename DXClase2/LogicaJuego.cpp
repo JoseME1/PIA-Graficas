@@ -10,6 +10,7 @@ using namespace std;
 
 void DXRender::CargarRuta()
 {
+		audio.DetenerMusicaCarrera();
 		// Conserva que puntos ya se usaron en esta hora aunque se recargue el circuito
 		std::vector<PuntoEntrenamiento> anteriores = puntosEntrenamiento;
 
@@ -287,6 +288,8 @@ const wchar_t* DXRender::NombreSlot(int slot)
 
 void DXRender::AplicarLuzDelDia()
 {
+		bool veniaDeNoche = luzInicializada && sinf(anguloDestino) < 0.0f;
+		if (amanecerConAudio) { audioAmanecer.Shutdown(); amanecerConAudio = false; amanecerPausado = false; }
 		luzInicial = light;
 		anguloInicial = g_DayAngle;
 		luzDestino = light;
@@ -319,11 +322,37 @@ void DXRender::AplicarLuzDelDia()
 			luzDestino.specular = D3DXVECTOR4(0.05f, 0.05f, 0.08f, 1.0f);
 			break;
 		}
+		luzDestino.specular.x *= 0.55f;
+		luzDestino.specular.y *= 0.55f;
+		luzDestino.specular.z *= 0.55f;
 
 		// Al comenzar un nuevo dia el sol continua por debajo del horizonte.
 		while (anguloDestino < anguloInicial)
 			anguloDestino += 6.2831853f;
 		transicionLuz = 0.0f;
+		if (veniaDeNoche && (slot == 0 || (diaActual >= 3 && slot == 1)))
+		{
+			amanecerConAudio = audioAmanecer.Init(L"Sonidos/operasun.wav", audioVolume, false);
+			if (!amanecerConAudio) audioAmanecer.Shutdown();
+			else
+			{
+				// Busca el horizonte del terreno en la direccion de salida del sol.
+				const float direccionX = 0.857493f, direccionZ = 0.514496f;
+				float pendiente = 0.0f;
+				for (float distancia = 8.0f; distancia <= 420.0f; distancia += 2.0f)
+				{
+					float x = camara->Position.x + direccionX * distancia;
+					float z = camara->Position.z + direccionZ * distancia;
+					if (x < 0.0f || x >= 299.0f || z < 0.0f || z >= 299.0f) break;
+					float altura = terreno->getTerrainCollision(D3DXVECTOR2(x, z));
+					pendiente = (std::max)(pendiente, (altura - camara->Position.y) / distancia);
+				}
+				float horizonte = atanf(pendiente * 1.16619f) - 0.02f;
+				float inicioCiclo = anguloDestino - fmodf(anguloDestino, 6.2831853f);
+				anguloInicial = inicioCiclo + horizonte;
+				if (anguloInicial > anguloDestino - 0.02f) anguloInicial = anguloDestino - 0.02f;
+			}
+		}
 		if (!luzInicializada)
 		{
 			transicionLuz = 1.0f;
@@ -337,6 +366,13 @@ void DXRender::ActualizarLuzDelDia()
 {
 		if (transicionLuz >= 1.0f)
 			transicionLuz = 1.0f;
+		else if (amanecerConAudio)
+		{
+			if (menuEstado != 0 && !amanecerPausado) { audioAmanecer.Pausar(); amanecerPausado = true; }
+			else if (menuEstado == 0 && amanecerPausado) { audioAmanecer.Reanudar(); amanecerPausado = false; }
+			transicionLuz = audioAmanecer.Progreso();
+			if (transicionLuz >= 1.0f) { audioAmanecer.Shutdown(); amanecerConAudio = false; amanecerPausado = false; }
+		}
 		else if (menuEstado == 0)
 		{
 			transicionLuz += deltaTime / 4.0f;
@@ -519,10 +555,10 @@ bool DXRender::PosicionLibreAlma(float x, float z)
 				return false;
 		}
 
-		for (size_t i = 0; i < 23 + colisionesCementerio.size(); i++)
+		for (size_t i = 0; i < 25 + colisionesCementerio.size(); i++)
 		{
 			if (i == 20) continue;
-			const BoxCollider& caja = i < 23 ? castleWalls[i] : colisionesCementerio[i - 23];
+			const BoxCollider& caja = i < 25 ? castleWalls[i] : colisionesCementerio[i - 25];
 			if (x > caja.minX - 2.0f && x < caja.maxX + 2.0f &&
 				z > caja.minZ - 2.0f && z < caja.maxZ + 2.0f)
 				return false;
@@ -986,6 +1022,11 @@ int DXRender::RangoJugador()
 
 void DXRender::ActualizarCarrera()
 {
+		if (amanecerConAudio)
+		{
+			hudTexto = L"Espera a que termine el amanecer";
+			return;
+		}
 		if (modoRuta || modoCamara)
 			return;
 
@@ -1033,6 +1074,7 @@ void DXRender::ActualizarCarrera()
 			else
 			{
 				estadoCarrera = CarreraCorriendo;
+				audio.IniciarMusicaCarrera();
 				autoCorriendo = true;
 				hudTexto.clear();
 			}
@@ -1152,6 +1194,7 @@ void DXRender::ActualizarCarrera()
 					// Fin de la carrera: se devuelve el control al jugador
 					tiempoLlegadaJugador = relojCarrera;
 					estadoCarrera = CarreraTerminada;
+					audio.DetenerMusicaCarrera();
 					autoCorriendo = false;
 					qteActivo = false;
 					tiempoMensaje = 6.0f;

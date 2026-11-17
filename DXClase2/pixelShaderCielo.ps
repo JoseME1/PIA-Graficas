@@ -24,6 +24,9 @@ struct VS_OUTPUT
     float3 binormal : BINORMAL;
 };
 
+Texture2D SolTexture : register(t2);
+SamplerState ObjSamplerState : register(s0);
+
 // Ruido de valor 2D para las nubes
 float hash21(float2 p)
 {
@@ -99,9 +102,19 @@ float4 PS(VS_OUTPUT input) : SV_Target
 
     skyColor = lerp(skyColor, cloudColor, cloud * 0.95);
 
-    // Sol: disco y halo calido
+    // La imagen sigue la direccion del sol y se desvanece en el horizonte.
     float sunDot = saturate(dot(dir, sunDir));
-    skyColor += float3(1.0, 0.45, 0.12) * pow(sunDot, 300.0) * 1.2;
+    float3 right = normalize(float3(-0.6, 0.0, 1.0));
+    float3 up = normalize(cross(right, sunDir));
+    float2 sunUV = float2(dot(dir, right), -dot(dir, up)) / 0.36 + 0.5;
+    float2 centered = (sunUV - 0.5) * 2.0;
+    float visibilidadSol = smoothstep(-0.18, -0.04, sunHeight);
+    float mask = (1.0 - smoothstep(0.82, 1.0, length(centered))) * visibilidadSol;
+    if (sunDot > 0.0 && all(sunUV >= 0.0) && all(sunUV <= 1.0))
+    {
+        float4 sol = SolTexture.Sample(ObjSamplerState, sunUV);
+        skyColor = lerp(skyColor, sol.rgb, mask * sol.a);
+    }
     skyColor += float3(1.0, 0.35, 0.08) * pow(sunDot, 6.0) * 0.35 * dayFactor;
 
     // De noche el rojo se apaga sin perder el tono

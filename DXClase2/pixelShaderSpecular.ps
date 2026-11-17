@@ -30,6 +30,7 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 {
 	input.normal = normalize(input.normal);
 	float4 textureColor = ObjTexture.Sample( ObjSamplerState, input.TexCoord );
+	clip(textureColor.a - 0.9f);
 
 	float4 tempSpecular = float4(0.0f,0.0f,0.0f,0.0f);
 	float4 finalColor = light.ambient;
@@ -38,12 +39,12 @@ float4 PS( VS_OUTPUT input ) : SV_Target
 	if(lightIntensity > 0.0f){
 		finalColor += (light.diffuse * lightIntensity);
 		float3 reflection = normalize(2 * lightIntensity * input.normal - light.direction);
-		tempSpecular = pow(saturate(dot(reflection,input.viewDirection)),light.specularPower);
+		tempSpecular = light.specular * pow(saturate(dot(reflection,normalize(input.viewDirection))),light.specularPower);
 	}
 
 	finalColor = finalColor * textureColor;
 	finalColor = saturate(finalColor + tempSpecular);
 
-	return finalColor;
+	return float4(finalColor.rgb, textureColor.a);
 	
 }

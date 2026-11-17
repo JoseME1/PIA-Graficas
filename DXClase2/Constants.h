@@ -8,5 +8,6 @@ enum shaders
 	ShaderAgua = 5,
 	ShaderCielo = 6,
 	ShaderPasto = 7,
-	ShaderTexto = 8
+	ShaderTexto = 8,
+	ShaderBillboard = 9
 };
